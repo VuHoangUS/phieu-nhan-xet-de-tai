@@ -2,28 +2,33 @@
  * WEBAPP PHIẾU NHẬN XÉT ĐỀ TÀI NCKH CẤP CƠ SỞ — LINK CÁ NHÂN HOÁ
  * Viện ARiHA - Bệnh viện Thống Nhất
  *
- * THAY THẾ cho cách cũ: prefill Google Form (link rất dài) + rút gọn qua TinyURL
- * (bị giới hạn số lượng link tạo được).
+ * THAY THẾ cho cách cũ: prefill Google Form (link rất dài) + rút gọn qua một webapp
+ * shortener riêng ghi vào sheet "Shortener" (bị giới hạn/cồng kềnh khi số đề tài
+ * tăng lên).
+ *
+ * CÁCH BỐ TRÍ DỮ LIỆU (đúng theo sheet "DS_đề_tài_thẩm_định" thật của Viện):
+ * mỗi ĐỀ TÀI là MỘT DÒNG, có tới 2 người thẩm định (Thẩm định 1 / Thẩm định 2),
+ * mỗi người có một link nhận xét RIÊNG:
+ *   ... | Google form link | Shorten Link | NOTE | Thẩm định 1 | Email TĐ1 |
+ *   Thẩm định 2 | Email TĐ2 | GG form link 2 | Shorten Link 2
+ * Script này ghi ĐÈ link cá nhân hoá mới (dạng "<URL webapp>?id=<mã>") vào đúng
+ * 2 cột "Shorten Link" / "Shorten Link 2" đã có sẵn đó — không cần thêm cột mới
+ * cho phần link gửi đi. Mỗi người thẩm định có mã riêng, không đụng tới người kia.
  *
  * CÁCH HOẠT ĐỘNG:
- *  - Mỗi người nhận xét / mỗi đề tài có một "Mã liên kết" (8 ký tự) gắn với ĐÚNG MỘT
- *    dòng trong sheet tra cứu "DS_đề_tài_thẩm_định". Link gửi cho người nhận xét có
- *    dạng: <URL webapp>?id=<mã liên kết> — ngắn, không cần TinyURL, không giới hạn
- *    số lượng vì mã do chính script tự sinh và lưu trong Sheet.
- *  - Khi có người mở link, doGet() tra cứu NGAY LÚC ĐÓ (không cache) dữ liệu của
- *    dòng tương ứng trong sheet tra cứu rồi điền sẵn vào form. Vì vậy, MỌI THAY ĐỔI
- *    bạn sửa trong sheet tra cứu ("DS_đề_tài_thẩm_định") sẽ tự động phản ánh vào
- *    form ngay lần mở link kế tiếp — không cần tạo lại link.
- *  - Khi nộp bài, server KHÔNG tin các trường "Họ và tên người nhận xét / Tên đề
- *    tài / Chủ nhiệm / File PDF" mà trình duyệt gửi lên — mà tự tra cứu lại lần
- *    nữa từ Mã liên kết, để tránh bị sửa trực tiếp trên trình duyệt (F12).
+ *  - doGet() nhận ?id=<mã>, dò trong CẢ 2 cột mã liên kết (TĐ1 và TĐ2, script tự
+ *    tạo 2 cột phụ "Mã liên kết TĐ1"/"Mã liên kết TĐ2" để lưu mã — không phải cột
+ *    hiển thị link) của mọi dòng trong "DS_đề_tài_thẩm_định" để tìm đúng đề tài +
+ *    đúng người thẩm định, rồi điền sẵn form NGAY LÚC MỞ TRANG (không cache) — sửa
+ *    dữ liệu trong sheet là form tự cập nhật, không cần tạo lại link.
+ *  - Khi nộp bài, server KHÔNG tin các trường Họ tên/Tên đề tài/Chủ nhiệm/PDF mà
+ *    trình duyệt gửi lên — tự tra cứu lại theo mã liên kết để tránh sửa tay (F12).
  *
  * Cấu trúc file:
  *  - Code.gs        : logic phía server (file này)
  *  - Index.html     : khung giao diện chính (đọc URL, tra Mã liên kết, render form)
- *  - CSS.html       : toàn bộ style (kế thừa đúng hệ thống class/màu của webapp
- *                      "Nộp nghiệm thu NCKH" cùng Viện đã làm trước đó, xem
- *                      reference/webapp-nghiem-thu-2026-q3/ trong repo)
+ *  - CSS.html       : toàn bộ style (kế thừa đúng CSS thật của webapp "Nộp nghiệm
+ *                      thu NCKH" cùng Viện — xem reference/webapp-nghiem-thu-2026-q3/)
  *  - JavaScript.html: toàn bộ logic phía client
  *
  * CÁCH TRIỂN KHAI: xem README.md đi kèm trong thư mục này.
@@ -31,20 +36,23 @@
 
 // Đổi chuỗi này mỗi khi sửa code, rồi so với dòng "Server code version" hiện ở cuối
 // trang web đã deploy — nếu KHÔNG khớp nghĩa là bản deploy đang test vẫn là code CŨ.
-var CODE_VERSION = 'v1-2026-09-21-personalized-link';
+var CODE_VERSION = 'v2-2026-09-21-two-reviewer-slots';
 
 // ============================= CẤU HÌNH =============================
 
-// Sheet TRA CỨU nguồn dữ liệu để điền sẵn (đề tài đã đăng ký thẩm định năm ngoái).
+// Sheet TRA CỨU nguồn dữ liệu để điền sẵn (đề tài đã đăng ký thẩm định).
 var LOOKUP_SPREADSHEET_ID = '1IuQdVd1944TKO8gMo98VuG-7-BPQ421q5tx1GDWOWRs';
 var LOOKUP_SHEET_NAME = 'DS_đề_tài_thẩm_định';
 
-// Sheet GHI KẾT QUẢ nhận xét (nơi lưu câu trả lời của người nhận xét).
+// Sheet GHI KẾT QUẢ nhận xét (nơi lưu câu trả lời của người nhận xét) — chính là
+// sheet trả lời của Google Form "PHIẾU NHẬN XÉT ĐỀ TÀI..." các quý trước, để dữ
+// liệu nối tiếp đúng vào các cột đã có (script tự dò theo TÊN CỘT, không theo vị
+// trí, nên không quan trọng thứ tự cột hiện có).
 var RESPONSE_SPREADSHEET_ID = '1H894S9x3JUWtZBCEdgsP5EiBbyBOjKkuGybgpSgXUK4';
-// CHANGE ME nếu tên sheet thực tế trong file trên khác — mặc định script sẽ tự
-// dùng SHEET ĐẦU TIÊN của file nếu không tìm thấy đúng tên này (xem
-// getResponseSheet_ bên dưới), để không bao giờ crash chỉ vì lệch tên sheet.
-var RESPONSE_SHEET_NAME = 'Trả lời nhận xét';
+// CHANGE ME nếu tên sheet thực tế trong file trên khác — không tìm thấy thì script
+// tự dùng sheet đầu tiên của file (xem getResponseSheet_), không bao giờ crash chỉ
+// vì lệch tên sheet.
+var RESPONSE_SHEET_NAME = 'Trang tính1';
 
 // Liên hệ hỗ trợ (hiện khi link không hợp lệ / hết hạn).
 var CONTACT_EMAIL = 'ariha@bvtn.edu.vn';
@@ -73,8 +81,9 @@ function doGet(e) {
 
   var linkId = (e && e.parameter && e.parameter.id) ? String(e.parameter.id).trim() : '';
   template.linkId = linkId;
-  // null nếu thiếu ?id=... trên URL, hoặc mã không khớp dòng nào trong sheet tra cứu.
-  template.prefill = (template.accepting && linkId) ? lookupPrefillById_(linkId) : null;
+  // null nếu thiếu ?id=... trên URL, hoặc mã không khớp dòng/người thẩm định nào.
+  var match = (template.accepting && linkId) ? lookupPrefillById_(linkId) : null;
+  template.prefill = match ? match.prefill : null;
 
   return template
     .evaluate()
@@ -150,25 +159,38 @@ function setupConfigSheet() {
 
 // ============================= TRA CỨU / SINH LINK CÁ NHÂN HOÁ =============================
 
-// Mỗi field logic có thể ứng với nhiều tên cột khác nhau tuỳ Sheet đã đặt tên thế
-// nào — liệt kê hết các tên có thể gặp để đổi tên cột trong Sheet không làm hỏng
-// tra cứu. Cột "linkId" nếu chưa tồn tại sẽ được TỰ ĐỘNG TẠO bởi generateReviewLinks().
+// Cột dữ liệu DÙNG CHUNG cho cả 2 người thẩm định (đề tài, chủ nhiệm, PDF) — liệt
+// kê hết các tên cột có thể gặp để đổi tên cột trong Sheet không làm hỏng tra cứu.
 var LOOKUP_COLUMN_ALIASES = {
-  linkId: ['Mã liên kết', 'Mã link', 'ID nhận xét'],
-  reviewerName: ['Họ và tên người nhận xét', 'Người nhận xét', 'Họ tên người nhận xét'],
-  reviewerEmail: ['Email người nhận xét', 'Email'],
   tenDeTai: ['Tên đề tài'],
   chuNhiem: ['Chủ nhiệm đề tài', 'Chủ nhiệm'],
-  pdfLink: ['File PDF của đề tài nghiên cứu trên', 'File PDF của đề tài nghiên cứu trên:',
-    'File PDF của đề tài', 'File PDF', 'Link PDF', 'PDF']
+  pdfLink: ['Bản PDF nghiệm thu đề tài', 'File PDF của đề tài nghiên cứu trên',
+    'File PDF của đề tài nghiên cứu trên:', 'File PDF của đề tài', 'File PDF', 'Link PDF', 'PDF']
 };
 
-// Cột ghi ngược lại sau khi sinh link / sau khi nhận được bài nhận xét — tự tạo nếu
-// sheet chưa có, không đè lên cột dữ liệu đang có.
-var LOOKUP_HELPER_COLUMNS = {
-  personalLink: 'Đường link cá nhân hoá',
-  reviewedAt: 'Đã nhận xét lúc'
-};
+// 2 "chỗ" thẩm định trên mỗi dòng đề tài — đúng theo bố cục cột thật:
+// ... | Shorten Link | NOTE | Thẩm định 1 | Email TĐ1 | Thẩm định 2 | Email TĐ2 | GG form link 2 | Shorten Link 2
+// personalLinkAliases trỏ vào ĐÚNG cột "Shorten Link" / "Shorten Link 2" đã có sẵn
+// (script ghi đè link cá nhân hoá mới vào đó); linkIdHeader/reviewedAtHeader là 2
+// cột phụ (lưu mã thô + mốc thời gian đã nhận xét) mà script tự tạo nếu chưa có.
+var REVIEWER_SLOTS = [
+  {
+    slot: 1,
+    nameAliases: ['Thẩm định 1'],
+    emailAliases: ['Email TĐ1', 'Email TD1'],
+    personalLinkAliases: ['Shorten Link'],
+    linkIdHeader: 'Mã liên kết TĐ1',
+    reviewedAtHeader: 'Đã nhận xét lúc TĐ1'
+  },
+  {
+    slot: 2,
+    nameAliases: ['Thẩm định 2'],
+    emailAliases: ['Email TĐ2', 'Email TD2'],
+    personalLinkAliases: ['Shorten Link 2'],
+    linkIdHeader: 'Mã liên kết TĐ2',
+    reviewedAtHeader: 'Đã nhận xét lúc TĐ2'
+  }
+];
 
 function getLookupSheet_() {
   var ss = SpreadsheetApp.openById(LOOKUP_SPREADSHEET_ID);
@@ -199,8 +221,8 @@ function findColumnIndex_(headerMap, aliases) {
 }
 
 /**
- * Trả về index (0-based) của cột `headerName`, tự thêm cột mới vào cuối sheet nếu
- * chưa tồn tại (khớp theo alias). Cập nhật luôn headerMap truyền vào.
+ * Trả về index (0-based) của cột, tự thêm cột mới vào cuối sheet nếu chưa tồn tại
+ * (khớp theo alias). Cập nhật luôn headerMap truyền vào.
  */
 function findOrCreateColumn_(sheet, headerMap, aliases, headerNameToCreate) {
   var idx = findColumnIndex_(headerMap, aliases);
@@ -212,12 +234,10 @@ function findOrCreateColumn_(sheet, headerMap, aliases, headerNameToCreate) {
   return newCol - 1;
 }
 
-function lookupLookupIndexes_(sheet) {
-  var headerMap = buildHeaderMap_(sheet);
+function getLookupCommonIndexes_(headerMap) {
   var idx = {};
   var missing = [];
   Object.keys(LOOKUP_COLUMN_ALIASES).forEach(function (field) {
-    if (field === 'linkId') return; // xử lý riêng, tự tạo cột nếu thiếu
     var found = findColumnIndex_(headerMap, LOOKUP_COLUMN_ALIASES[field]);
     if (found === -1) missing.push(LOOKUP_COLUMN_ALIASES[field].join(' / '));
     idx[field] = found;
@@ -228,57 +248,86 @@ function lookupLookupIndexes_(sheet) {
       '. Cột hiện có: ' + Object.keys(headerMap).join(', ')
     );
   }
-  idx.linkId = findOrCreateColumn_(sheet, headerMap, LOOKUP_COLUMN_ALIASES.linkId, LOOKUP_COLUMN_ALIASES.linkId[0]);
   return idx;
 }
 
+/** name/email của mỗi slot BẮT BUỘC phải có sẵn (đây là dữ liệu gốc do người dùng
+ *  nhập, script không tự tạo); linkId là cột phụ, tự tạo nếu thiếu. */
+function getSlotIndexes_(sheet, headerMap, slotConfig) {
+  var nameIdx = findColumnIndex_(headerMap, slotConfig.nameAliases);
+  var emailIdx = findColumnIndex_(headerMap, slotConfig.emailAliases);
+  if (nameIdx === -1 || emailIdx === -1) {
+    throw new Error('Sheet "' + LOOKUP_SHEET_NAME + '" thiếu cột "' + slotConfig.nameAliases[0] +
+      '" hoặc "' + slotConfig.emailAliases[0] + '".');
+  }
+  return {
+    name: nameIdx,
+    email: emailIdx,
+    linkId: findOrCreateColumn_(sheet, headerMap, [slotConfig.linkIdHeader], slotConfig.linkIdHeader)
+  };
+}
+
 /**
- * Tra cứu dữ liệu điền sẵn theo Mã liên kết. Luôn đọc TRỰC TIẾP từ Sheet (không
- * cache) — đây chính là lý do khi bạn sửa dữ liệu trong sheet tra cứu, link cũ vẫn
- * tự cập nhật mà không cần tạo lại.
+ * Tra cứu dữ liệu điền sẵn theo Mã liên kết — dò trong CẢ 2 cột mã (TĐ1, TĐ2) của
+ * mọi dòng. Luôn đọc TRỰC TIẾP từ Sheet (không cache) — đây chính là lý do khi bạn
+ * sửa dữ liệu trong sheet tra cứu, link cũ vẫn tự cập nhật mà không cần tạo lại.
+ * Trả về { prefill: {...}, rowNumber, slotConfig } hoặc null nếu không khớp.
  */
 function lookupPrefillById_(linkId) {
   var sheet = getLookupSheet_();
-  var idx = lookupLookupIndexes_(sheet);
+  var headerMap = buildHeaderMap_(sheet);
+  var common = getLookupCommonIndexes_(headerMap);
+  var slotIdx = REVIEWER_SLOTS.map(function (cfg) { return getSlotIndexes_(sheet, headerMap, cfg); });
+
   var lastRow = sheet.getLastRow();
   if (lastRow < 2) return null;
-
   var lastCol = sheet.getLastColumn();
   var data = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
   var wanted = String(linkId).trim().toUpperCase();
 
   for (var r = 0; r < data.length; r++) {
     var row = data[r];
-    var rowLinkId = String(row[idx.linkId] || '').trim().toUpperCase();
-    if (rowLinkId && rowLinkId === wanted) {
-      return {
-        linkId: rowLinkId,
-        reviewerName: String(row[idx.reviewerName] || '').trim(),
-        reviewerEmail: String(row[idx.reviewerEmail] || '').trim(),
-        tenDeTai: String(row[idx.tenDeTai] || '').trim(),
-        chuNhiem: String(row[idx.chuNhiem] || '').trim(),
-        pdfLink: String(row[idx.pdfLink] || '').trim(),
-        rowNumber: r + 2
-      };
+    for (var s = 0; s < REVIEWER_SLOTS.length; s++) {
+      var idx = slotIdx[s];
+      var rowLinkId = String(row[idx.linkId] || '').trim().toUpperCase();
+      if (rowLinkId && rowLinkId === wanted) {
+        return {
+          rowNumber: r + 2,
+          slotConfig: REVIEWER_SLOTS[s],
+          prefill: {
+            linkId: rowLinkId,
+            reviewerName: String(row[idx.name] || '').trim(),
+            reviewerEmail: String(row[idx.email] || '').trim(),
+            tenDeTai: String(row[common.tenDeTai] || '').trim(),
+            chuNhiem: String(row[common.chuNhiem] || '').trim(),
+            pdfLink: String(row[common.pdfLink] || '').trim()
+          }
+        };
+      }
     }
   }
   return null;
 }
 
 /**
- * CHẠY THỦ CÔNG mỗi khi có đề tài/người nhận xét MỚI cần cấp link (an toàn khi
- * chạy lại nhiều lần — dòng đã có Mã liên kết sẽ được GIỮ NGUYÊN, chỉ những dòng
- * còn trống mới được sinh mã mới). Sau khi chạy xong, cột "Đường link cá nhân hoá"
- * trong sheet tra cứu sẽ có sẵn link để copy gửi cho từng người.
+ * CHẠY THỦ CÔNG mỗi khi có đề tài/người thẩm định MỚI cần cấp link (an toàn khi
+ * chạy lại nhiều lần — dòng/slot đã có Mã liên kết sẽ GIỮ NGUYÊN mã cũ, chỉ những
+ * chỗ còn trống mới được sinh mã mới). Link cá nhân hoá luôn được ghi (đè) vào
+ * đúng cột "Shorten Link" (Thẩm định 1) / "Shorten Link 2" (Thẩm định 2) đã có sẵn
+ * trong sheet — không tạo cột hiển thị link mới.
  *
- * Muốn cấp LẠI một mã mới cho một dòng cụ thể (ví dụ gửi nhầm người): xoá tay ô
- * "Mã liên kết" của dòng đó rồi chạy lại hàm này.
+ * Muốn cấp LẠI một mã mới cho một người cụ thể (ví dụ gửi nhầm người): xoá tay ô
+ * "Mã liên kết TĐ1"/"Mã liên kết TĐ2" (cột phụ do script tạo) của dòng đó rồi chạy
+ * lại hàm này.
  */
 function generateReviewLinks() {
   var sheet = getLookupSheet_();
-  var idx = lookupLookupIndexes_(sheet);
   var headerMap = buildHeaderMap_(sheet);
-  var linkColIdx = findOrCreateColumn_(sheet, headerMap, [LOOKUP_HELPER_COLUMNS.personalLink], LOOKUP_HELPER_COLUMNS.personalLink);
+  var common = getLookupCommonIndexes_(headerMap);
+  var slotIdx = REVIEWER_SLOTS.map(function (cfg) { return getSlotIndexes_(sheet, headerMap, cfg); });
+  var linkColIdx = REVIEWER_SLOTS.map(function (cfg) {
+    return findOrCreateColumn_(sheet, headerMap, cfg.personalLinkAliases, cfg.personalLinkAliases[0]);
+  });
 
   var scriptUrl = ScriptApp.getService().getUrl();
   if (!scriptUrl) {
@@ -295,31 +344,41 @@ function generateReviewLinks() {
 
   var existingCodes = {};
   data.forEach(function (row) {
-    var code = String(row[idx.linkId] || '').trim().toUpperCase();
-    if (code) existingCodes[code] = true;
+    slotIdx.forEach(function (idx) {
+      var code = String(row[idx.linkId] || '').trim().toUpperCase();
+      if (code) existingCodes[code] = true;
+    });
   });
 
   var created = 0;
+  var refreshed = 0;
   for (var r = 0; r < data.length; r++) {
     var row = data[r];
-    var hasName = String(row[idx.reviewerName] || '').trim();
-    var hasDeTai = String(row[idx.tenDeTai] || '').trim();
-    if (!hasName && !hasDeTai) continue; // dòng trống, bỏ qua
-
     var rowNumber = r + 2;
-    var code = String(row[idx.linkId] || '').trim().toUpperCase();
-    if (!code) {
-      code = generateUniqueCode_(existingCodes);
-      existingCodes[code] = true;
-      sheet.getRange(rowNumber, idx.linkId + 1).setNumberFormat('@').setValue(code);
-      created++;
+    var hasDeTai = String(row[common.tenDeTai] || '').trim();
+    if (!hasDeTai) continue; // dòng trống, bỏ qua
+
+    for (var s = 0; s < REVIEWER_SLOTS.length; s++) {
+      var idx = slotIdx[s];
+      var hasName = String(row[idx.name] || '').trim();
+      if (!hasName) continue; // slot này chưa phân công người thẩm định
+
+      var code = String(row[idx.linkId] || '').trim().toUpperCase();
+      if (!code) {
+        code = generateUniqueCode_(existingCodes);
+        existingCodes[code] = true;
+        sheet.getRange(rowNumber, idx.linkId + 1).setNumberFormat('@').setValue(code);
+        created++;
+      }
+      var link = scriptUrl + '?id=' + encodeURIComponent(code);
+      sheet.getRange(rowNumber, linkColIdx[s] + 1).setValue(link);
+      refreshed++;
     }
-    var link = scriptUrl + '?id=' + encodeURIComponent(code);
-    sheet.getRange(rowNumber, linkColIdx + 1).setValue(link);
   }
 
-  Logger.log('=> Đã xử lý %s dòng. Sinh mới %s Mã liên kết. Xem cột "%s" để lấy link.',
-    data.length, created, LOOKUP_HELPER_COLUMNS.personalLink);
+  Logger.log('=> Đã xử lý %s dòng đề tài. Sinh mới %s mã, ghi/làm mới %s link (tổng cả 2 slot). ' +
+    'Xem cột "Shorten Link" / "Shorten Link 2" trong sheet tra cứu để lấy link gửi đi.',
+    data.length, created, refreshed);
 }
 
 function generateUniqueCode_(existingCodes) {
@@ -353,11 +412,34 @@ var COMMENT_FIELDS = [
   { key: 'nxCanChinhSua', label: 'Các điểm cần chỉnh sửa' }
 ];
 
-var RESPONSE_HEADERS = ['Dấu thời gian', 'Mã liên kết', 'Họ và tên người nhận xét', 'Email người nhận xét',
-  'Tên đề tài', 'Chủ nhiệm đề tài', 'File PDF đề tài']
-  .concat(SCORE_FIELDS.map(function (f) { return f.label; }))
-  .concat(COMMENT_FIELDS.map(function (f) { return f.label; }))
-  .concat(['KẾT LUẬN', 'Ý kiến về đề tài (nếu có)', 'Xếp loại']);
+// Tên cột GHI ĐÚNG theo sheet trả lời thật của Google Form "PHIẾU NHẬN XÉT ĐỀ TÀI
+// NGHIÊN CỨU KHOA HỌC CẤP CƠ SỞ" các quý trước — nhờ vậy dữ liệu mới nối tiếp đúng
+// vào các cột sẵn có thay vì tạo một bố cục khác. "Mã liên kết" là cột phụ mới,
+// script tự tạo nếu sheet chưa có (dùng để chống nộp trùng khi mở lại cùng link).
+var RESPONSE_FIELD_HEADERS = {
+  timestamp: 'Dấu thời gian',
+  linkId: 'Mã liên kết',
+  reviewerName: 'Họ và tên người nhận xét',
+  reviewerEmail: 'Email người nhận xét',
+  tenDeTai: 'Tên đề tài',
+  chuNhiem: 'Chủ nhiệm đề tài',
+  pdfLink: 'File PDF của đề tài nghiên cứu trên:',
+  diemDatVanDe: '1. Đặt vấn đề [Giới thiệu được vấn đề hoặc khoảng cách giữa mong muốn và thực tế]',
+  diemMucTieu: '2. Mục tiêu [Đưa ra mục tiêu rõ ràng liên quan đến chủ đề nghiên cứu]',
+  diemPPNCThietKe: '3. Phương pháp nghiên cứu [Thiết kế và đối tượng nghiên cứu được mô tả rõ ràng, phù hợp với nội dung và đáp ứng được mục tiêu một cách hiệu quả]',
+  diemPPNCQuyTrinh: '3. Phương pháp nghiên cứu [Quy trình triển khai thu thập thông tin và phân tích dữ liệu được mô tả rõ ràng]',
+  diemKetQua: '4. Kết quả [Kết quả nghiên cứu được trình bày khoa học, đáp ứng được mục tiêu nghiên cứu]',
+  diemKetLuanBanLuan: '5. Kết luận - Bàn luận [Kết luận - bàn luận được đưa ra phù hợp với kết quả và đúng theo các mục tiêu]',
+  diemCachTrinhBay: '6. Cách trình bày [Nội dung được trình bày hấp dẫn và giúp cho người đọc muốn tìm hiểu thêm về vấn đề]',
+  nxTinhCapThiet: 'Tính cấp thiết của chủ đề nghiên cứu?',
+  nxPhuHopThietKe: 'Sự phù hợp của thiết kế nghiên cứu và phương pháp nghiên cứu?',
+  nxTinhMoi: 'Tính mới của những kết quả nghiên cứu?',
+  nxYNghia: 'Ý nghĩa khoa học và ứng dụng thực tiễn?',
+  nxCanChinhSua: 'Các điểm cần chỉnh sửa:',
+  ketLuan: 'KẾT LUẬN',
+  ykien: 'Ý kiến về đề tài (Nếu có)',
+  xepLoai: 'Xếp loại'
+};
 
 function handleSubmit(payload) {
   if (!isAcceptingResponses_()) {
@@ -372,22 +454,29 @@ function handleSubmit(payload) {
 
     // KHÔNG tin dữ liệu người/đề tài mà trình duyệt gửi lên — tra cứu lại từ
     // Sheet nguồn theo linkId để đảm bảo đúng người, đúng đề tài.
-    var prefill = lookupPrefillById_(linkId);
-    if (!prefill) throw new Error('Mã liên kết không hợp lệ hoặc đã bị thay đổi. Vui lòng liên hệ Viện ARiHA để được cấp lại link.');
+    var match = lookupPrefillById_(linkId);
+    if (!match) throw new Error('Mã liên kết không hợp lệ hoặc đã bị thay đổi. Vui lòng liên hệ Viện ARiHA để được cấp lại link.');
 
     validateAssessment_(payload);
 
     var ketLuan = String(payload.ketLuan || '').trim();
     var xepLoai = ketLuan === 'KHÔNG ĐẠT' ? 'KHÔNG ĐẠT' : String(payload.xepLoai || '').trim();
 
-    var row = [new Date(), prefill.linkId, prefill.reviewerName, prefill.reviewerEmail,
-      prefill.tenDeTai, prefill.chuNhiem, prefill.pdfLink];
-    SCORE_FIELDS.forEach(function (f) { row.push(Number(payload[f.key])); });
-    COMMENT_FIELDS.forEach(function (f) { row.push(String(payload[f.key] || '').trim()); });
-    row.push(ketLuan, String(payload.ykien || '').trim(), xepLoai);
+    var fields = {
+      reviewerName: match.prefill.reviewerName,
+      reviewerEmail: match.prefill.reviewerEmail,
+      tenDeTai: match.prefill.tenDeTai,
+      chuNhiem: match.prefill.chuNhiem,
+      pdfLink: match.prefill.pdfLink,
+      ketLuan: ketLuan,
+      ykien: String(payload.ykien || '').trim(),
+      xepLoai: xepLoai
+    };
+    SCORE_FIELDS.forEach(function (f) { fields[f.key] = Number(payload[f.key]); });
+    COMMENT_FIELDS.forEach(function (f) { fields[f.key] = String(payload[f.key] || '').trim(); });
 
-    upsertResponseRow_(prefill.linkId, row);
-    markReviewedInLookup_(prefill.rowNumber);
+    upsertResponseRow_(match.prefill.linkId, fields);
+    markReviewedInLookup_(match.rowNumber, match.slotConfig);
 
     return { success: true };
   } finally {
@@ -419,20 +508,29 @@ function getResponseSheet_() {
   var ss = SpreadsheetApp.openById(RESPONSE_SPREADSHEET_ID);
   var sheet = ss.getSheetByName(RESPONSE_SHEET_NAME);
   if (!sheet) sheet = ss.getSheets()[0]; // fallback: không crash chỉ vì lệch tên sheet
-  if (sheet.getLastRow() < 1) {
-    sheet.getRange(1, 1, 1, RESPONSE_HEADERS.length).setValues([RESPONSE_HEADERS]).setFontWeight('bold');
-  }
   return sheet;
 }
 
+function ensureResponseColumns_(sheet) {
+  var headerMap = buildHeaderMap_(sheet);
+  var idx = {};
+  Object.keys(RESPONSE_FIELD_HEADERS).forEach(function (key) {
+    idx[key] = findOrCreateColumn_(sheet, headerMap, [RESPONSE_FIELD_HEADERS[key]], RESPONSE_FIELD_HEADERS[key]);
+  });
+  return idx;
+}
+
 /** Nộp lại (mở đúng link cũ, gửi lần 2) sẽ GHI ĐÈ lên dòng nhận xét trước đó của
- *  chính Mã liên kết đó, thay vì tạo dòng trùng lặp. */
-function upsertResponseRow_(linkId, rowValues) {
+ *  chính Mã liên kết đó, thay vì tạo dòng trùng lặp. Ghi theo TÊN CỘT (không theo
+ *  vị trí cố định) nên khớp đúng vào sheet trả lời Google Form đã có sẵn. */
+function upsertResponseRow_(linkId, fields) {
   var sheet = getResponseSheet_();
+  var idx = ensureResponseColumns_(sheet);
+
   var lastRow = sheet.getLastRow();
   var targetRow = -1;
   if (lastRow >= 2) {
-    var ids = sheet.getRange(2, 2, lastRow - 1, 1).getValues(); // cột B = Mã liên kết
+    var ids = sheet.getRange(2, idx.linkId + 1, lastRow - 1, 1).getValues();
     for (var i = 0; i < ids.length; i++) {
       if (String(ids[i][0] || '').trim().toUpperCase() === linkId.toUpperCase()) {
         targetRow = i + 2;
@@ -441,15 +539,20 @@ function upsertResponseRow_(linkId, rowValues) {
     }
   }
   var writeRow = targetRow === -1 ? sheet.getLastRow() + 1 : targetRow;
-  sheet.getRange(writeRow, 1, 1, rowValues.length).setValues([rowValues]);
-  sheet.getRange(writeRow, 2).setNumberFormat('@').setValue(linkId); // giữ Mã liên kết là văn bản
+
+  Object.keys(fields).forEach(function (key) {
+    if (!(key in idx)) return;
+    sheet.getRange(writeRow, idx[key] + 1).setValue(fields[key]);
+  });
+  sheet.getRange(writeRow, idx.linkId + 1).setNumberFormat('@').setValue(linkId); // giữ mã là văn bản
+  sheet.getRange(writeRow, idx.timestamp + 1).setValue(new Date());
 }
 
-function markReviewedInLookup_(rowNumber) {
+function markReviewedInLookup_(rowNumber, slotConfig) {
   try {
     var sheet = getLookupSheet_();
     var headerMap = buildHeaderMap_(sheet);
-    var col = findOrCreateColumn_(sheet, headerMap, [LOOKUP_HELPER_COLUMNS.reviewedAt], LOOKUP_HELPER_COLUMNS.reviewedAt);
+    var col = findOrCreateColumn_(sheet, headerMap, [slotConfig.reviewedAtHeader], slotConfig.reviewedAtHeader);
     sheet.getRange(rowNumber, col + 1).setValue(new Date());
   } catch (err) {
     // Không để lỗi ghi chú "đã nhận xét lúc" làm hỏng việc nộp bài đã thành công.
