@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@600;700;800;900&family=JetBrains+Mono:wght@500;700&family=Montserrat:wght@900&display=swap" rel="stylesheet">
+  <?!= include('CSS'); ?>
+</head>
+<body>
+
+  <div class="wrap">
+    <section class="hero">
+      <div class="hero-title">PHIẾU NHẬN XÉT ĐỀ TÀI NGHIÊN CỨU KHOA HỌC CẤP CƠ SỞ</div>
+      <div class="hero-sub">Viện ARiHA &middot; Bệnh viện Thống Nhất</div>
+    </section>
+
+    <? if (!accepting) { ?>
+
+    <section class="card closed-card">
+      <div class="closed-icon">&#9203;</div>
+      <h2>Đã đóng nhận phiếu nhận xét</h2>
+      <p><?!= closedMessage ?></p>
+      <div class="contact-box">Liên hệ: <?!= contactEmail ?> &middot; <?!= contactPhone ?></div>
+    </section>
+
+    <? } else if (!prefill) { ?>
+
+    <section class="card invalid-card">
+      <div class="invalid-icon">&#9888;</div>
+      <h2>Liên kết không hợp lệ</h2>
+      <p>Đường link này không đúng hoặc đã bị thay đổi. Mỗi người nhận xét cần dùng
+        <b>đúng đường link cá nhân hoá</b> đã được Viện ARiHA gửi qua email (không tự gõ/sửa URL).</p>
+      <div class="contact-box">Nếu bạn nghĩ đây là nhầm lẫn, vui lòng liên hệ: <?!= contactEmail ?> &middot; <?!= contactPhone ?></div>
+    </section>
+
+    <? } else { ?>
+
+    <form id="mainForm" novalidate>
+
+      <section class="card readonly-field">
+        <h2 class="card-title">Thông tin đề tài &amp; người nhận xét <span class="locked-badge">Đã điền sẵn</span></h2>
+        <p class="card-note">Các thông tin dưới đây được lấy tự động theo đúng link đã gửi cho bạn — không thể chỉnh sửa. Nếu thấy sai, vui lòng liên hệ Viện ARiHA thay vì tự sửa.</p>
+
+        <div class="field">
+          <label>Họ và tên người nhận xét</label>
+          <div class="field-pill" id="pf-reviewerName"></div>
+        </div>
+        <div class="field">
+          <label>Email người nhận xét</label>
+          <div class="field-pill" id="pf-reviewerEmail"></div>
+        </div>
+        <div class="field">
+          <label>Tên đề tài</label>
+          <div class="field-pill" id="pf-tenDeTai"></div>
+        </div>
+        <div class="field">
+          <label>Chủ nhiệm đề tài</label>
+          <div class="field-pill" id="pf-chuNhiem"></div>
+        </div>
+        <div class="field">
+          <label>File PDF của đề tài nghiên cứu trên</label>
+          <div class="field-pill" id="pf-pdfLink"></div>
+          <div class="hint">Bấm vào đường link ở trên để mở/tải file PDF của đề tài (mở ở tab mới).</div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2 class="card-title">A. Phần chấm điểm chung cho từng nội dung của bài báo</h2>
+        <p class="card-note">Cho điểm mỗi mục từ 1 đến 5, tương ứng: 1 - Rất kém; 2 - Kém; 3 - Trung bình; 4 - Tốt; 5 - Rất tốt.</p>
+
+        <div class="field">
+          <label>1. Đặt vấn đề <span class="req">*</span></label>
+          <div class="hint">Giới thiệu được vấn đề hoặc khoảng cách giữa mong muốn và thực tế</div>
+          <div class="score-scale" data-score-group="diemDatVanDe"></div>
+        </div>
+
+        <div class="field">
+          <label>2. Mục tiêu <span class="req">*</span></label>
+          <div class="hint">Đưa ra mục tiêu rõ ràng liên quan đến chủ đề nghiên cứu</div>
+          <div class="score-scale" data-score-group="diemMucTieu"></div>
+        </div>
+
+        <div class="field">
+          <label>3a. Phương pháp nghiên cứu &ndash; Thiết kế và đối tượng <span class="req">*</span></label>
+          <div class="hint">Thiết kế và đối tượng nghiên cứu được mô tả rõ ràng, phù hợp với nội dung và đáp ứng được mục tiêu một cách hiệu quả</div>
+          <div class="score-scale" data-score-group="diemPPNCThietKe"></div>
+        </div>
+
+        <div class="field">
+          <label>3b. Phương pháp nghiên cứu &ndash; Quy trình thu thập/phân tích <span class="req">*</span></label>
+          <div class="hint">Quy trình triển khai thu thập thông tin và phân tích dữ liệu được mô tả rõ ràng</div>
+          <div class="score-scale" data-score-group="diemPPNCQuyTrinh"></div>
+        </div>
+
+        <div class="field">
+          <label>4. Kết quả <span class="req">*</span></label>
+          <div class="hint">Kết quả nghiên cứu được trình bày khoa học, đáp ứng được mục tiêu nghiên cứu</div>
+          <div class="score-scale" data-score-group="diemKetQua"></div>
+        </div>
+
+        <div class="field">
+          <label>5. Kết luận - Bàn luận <span class="req">*</span></label>
+          <div class="hint">Kết luận - bàn luận được đưa ra phù hợp với kết quả và đúng theo các mục tiêu</div>
+          <div class="score-scale" data-score-group="diemKetLuanBanLuan"></div>
+        </div>
+
+        <div class="field">
+          <label>6. Cách trình bày <span class="req">*</span></label>
+          <div class="hint">Nội dung được trình bày hấp dẫn và giúp cho người đọc muốn tìm hiểu thêm về vấn đề</div>
+          <div class="score-scale" data-score-group="diemCachTrinhBay"></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2 class="card-title">B. Phần nhận xét bài báo</h2>
+
+        <div class="field">
+          <label>Tính cấp thiết của chủ đề nghiên cứu? <span class="req">*</span></label>
+          <textarea id="nxTinhCapThiet" required></textarea>
+        </div>
+        <div class="field">
+          <label>Sự phù hợp của thiết kế nghiên cứu và phương pháp nghiên cứu? <span class="req">*</span></label>
+          <textarea id="nxPhuHopThietKe" required></textarea>
+        </div>
+        <div class="field">
+          <label>Tính mới của những kết quả nghiên cứu? <span class="req">*</span></label>
+          <textarea id="nxTinhMoi" required></textarea>
+        </div>
+        <div class="field">
+          <label>Ý nghĩa khoa học và ứng dụng thực tiễn? <span class="req">*</span></label>
+          <textarea id="nxYNghia" required></textarea>
+        </div>
+        <div class="field">
+          <label>Các điểm cần chỉnh sửa: <span class="req">*</span></label>
+          <textarea id="nxCanChinhSua" required></textarea>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2 class="card-title">Kết luận</h2>
+
+        <div class="field">
+          <label>KẾT LUẬN <span class="req">*</span></label>
+          <div class="radio-group" id="ketLuanGroup">
+            <label class="radio-pill"><input type="radio" name="ketLuan" value="ĐẠT" required> ĐẠT</label>
+            <label class="radio-pill"><input type="radio" name="ketLuan" value="KHÔNG ĐẠT"> KHÔNG ĐẠT</label>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Ý kiến về đề tài (Nếu có)</label>
+          <textarea id="ykien"></textarea>
+        </div>
+
+        <div class="field">
+          <label>Xếp loại <span class="req">*</span></label>
+          <div class="hint">Khi kết luận là "KHÔNG ĐẠT" thì xếp loại cũng là "KHÔNG ĐẠT" (tự động).</div>
+          <div class="radio-group" id="xepLoaiGroup">
+            <label class="radio-pill"><input type="radio" name="xepLoai" value="Giỏi"> Giỏi</label>
+            <label class="radio-pill"><input type="radio" name="xepLoai" value="Khá"> Khá</label>
+            <label class="radio-pill"><input type="radio" name="xepLoai" value="Trung bình"> Trung bình</label>
+            <label class="radio-pill"><input type="radio" name="xepLoai" value="KHÔNG ĐẠT"> KHÔNG ĐẠT</label>
+          </div>
+        </div>
+      </section>
+
+      <div class="submit-row">
+        <button type="submit" id="submitBtn" class="submit-btn">Nộp phiếu nhận xét</button>
+        <div class="submit-status" id="submitStatus"></div>
+      </div>
+    </form>
+
+    <section class="card success-card" id="successCard" style="display:none">
+      <div class="success-icon">&#10003;</div>
+      <h2>Đã ghi nhận phiếu nhận xét. Cảm ơn Quý thầy/cô!</h2>
+      <p class="hint">Nếu cần chỉnh sửa lại, bạn có thể mở lại đúng link này và nộp lại — hệ thống sẽ tự cập nhật vào lần nộp gần nhất.</p>
+    </section>
+
+    <? } ?>
+
+    <div class="version-footer" id="versionFooter">Đang kiểm tra phiên bản server...</div>
+  </div>
+
+  <script>
+    // Giá trị server-truth, chỉ bơm được ở Index.html (file được templated qua
+    // .evaluate()), KHÔNG bơm được ở JavaScript.html vì include() không templated.
+    window.SERVER_SCRIPT_URL = <?!= JSON.stringify(scriptUrl) ?>;
+    window.PREFILL_DATA = <?!= JSON.stringify(prefill) ?>;
+
+    // Chạy bất kể form có hiển thị hay không (đóng/link sai vẫn cần thấy version).
+    document.addEventListener('DOMContentLoaded', function () {
+      var footer = document.getElementById('versionFooter');
+      google.script.run
+        .withSuccessHandler(function (info) {
+          footer.textContent = 'Server code version: ' + (info && info.version ? info.version : '?');
+        })
+        .withFailureHandler(function () {
+          footer.textContent = 'Không tải được thông tin phiên bản server.';
+        })
+        .getServerInfo();
+    });
+  </script>
+
+  <? if (accepting && prefill) { ?>
+  <?!= include('JavaScript'); ?>
+  <? } ?>
+</body>
+</html>

@@ -1,0 +1,260 @@
+<script>
+(function () {
+  'use strict';
+
+  var SCORE_GROUPS = ['diemDatVanDe', 'diemMucTieu', 'diemPPNCThietKe', 'diemPPNCQuyTrinh',
+    'diemKetQua', 'diemKetLuanBanLuan', 'diemCachTrinhBay'];
+  var COMMENT_FIELDS = ['nxTinhCapThiet', 'nxPhuHopThietKe', 'nxTinhMoi', 'nxYNghia', 'nxCanChinhSua'];
+
+  var scriptUrl = null;
+  var submitBtnOriginalText = null;
+  var submitDotsTimer = null;
+
+  var els = {
+    form: document.getElementById('mainForm'),
+    submitBtn: document.getElementById('submitBtn'),
+    submitStatus: document.getElementById('submitStatus'),
+    successCard: document.getElementById('successCard'),
+    ketLuanGroup: document.getElementById('ketLuanGroup'),
+    xepLoaiGroup: document.getElementById('xepLoaiGroup')
+  };
+
+  document.addEventListener('DOMContentLoaded', function () {
+    if (window.SERVER_SCRIPT_URL) {
+      scriptUrl = window.SERVER_SCRIPT_URL;
+    } else if (google.script.url && google.script.url.getLocation) {
+      google.script.url.getLocation(function (loc) { scriptUrl = loc && loc.url ? loc.url : null; });
+    }
+
+    renderPrefill();
+    renderScoreScales();
+    wireKetLuanToXepLoai();
+  });
+
+  // ------------------------- HIỂN THỊ DỮ LIỆU ĐIỀN SẴN -------------------------
+
+  function textOrDash(v) {
+    var t = (v || '').toString().trim();
+    return t || '(không có dữ liệu)';
+  }
+
+  function renderPrefill() {
+    var p = window.PREFILL_DATA || {};
+    setText('pf-reviewerName', textOrDash(p.reviewerName));
+    setText('pf-reviewerEmail', textOrDash(p.reviewerEmail));
+    setText('pf-tenDeTai', textOrDash(p.tenDeTai));
+    setText('pf-chuNhiem', textOrDash(p.chuNhiem));
+
+    var pdfEl = document.getElementById('pf-pdfLink');
+    if (pdfEl) {
+      if (p.pdfLink) {
+        var a = document.createElement('a');
+        a.href = p.pdfLink;
+        a.target = '_blank';
+        a.rel = 'noopener';
+        a.textContent = 'Mở file PDF của đề tài ↗';
+        pdfEl.innerHTML = '';
+        pdfEl.appendChild(a);
+      } else {
+        pdfEl.textContent = '(không có dữ liệu)';
+      }
+    }
+  }
+
+  function setText(id, text) {
+    var el = document.getElementById(id);
+    if (el) el.textContent = text;
+  }
+
+  // ------------------------- THANG ĐIỂM 1-5 -------------------------
+
+  function renderScoreScales() {
+    SCORE_GROUPS.forEach(function (groupKey) {
+      var container = document.querySelector('.score-scale[data-score-group="' + groupKey + '"]');
+      if (!container) return;
+      for (var v = 1; v <= 5; v++) {
+        var label = document.createElement('label');
+        label.className = 'score-pill';
+        var input = document.createElement('input');
+        input.type = 'radio';
+        input.name = groupKey;
+        input.value = String(v);
+        input.required = true;
+        label.appendChild(input);
+        label.appendChild(document.createTextNode(String(v)));
+        container.appendChild(label);
+      }
+      var caption = document.createElement('div');
+      caption.className = 'score-scale-caption';
+      caption.innerHTML = '<span>1 - Rất kém</span><span>5 - Rất tốt</span>';
+      container.parentNode.insertBefore(caption, container.nextSibling);
+    });
+  }
+
+  function getScoreValue(groupKey) {
+    var checked = document.querySelector('input[name="' + groupKey + '"]:checked');
+    return checked ? checked.value : '';
+  }
+
+  // ------------------------- KẾT LUẬN -> XẾP LOẠI (tự khoá) -------------------------
+
+  function wireKetLuanToXepLoai() {
+    if (!els.ketLuanGroup || !els.xepLoaiGroup) return;
+    els.ketLuanGroup.addEventListener('change', applyKetLuanRule);
+    applyKetLuanRule();
+  }
+
+  function applyKetLuanRule() {
+    var checked = document.querySelector('input[name="ketLuan"]:checked');
+    var isKhongDat = checked && checked.value === 'KHÔNG ĐẠT';
+    var pills = els.xepLoaiGroup.querySelectorAll('.radio-pill');
+    pills.forEach(function (pill) {
+      var input = pill.querySelector('input');
+      if (!input) return;
+      if (isKhongDat) {
+        if (input.value === 'KHÔNG ĐẠT') {
+          input.checked = true;
+          input.disabled = false;
+          pill.classList.remove('is-disabled');
+        } else {
+          input.checked = false;
+          input.disabled = true;
+          pill.classList.add('is-disabled');
+        }
+      } else {
+        input.disabled = false;
+        pill.classList.remove('is-disabled');
+        if (input.value === 'KHÔNG ĐẠT') input.checked = false;
+      }
+    });
+  }
+
+  // ------------------------- SUBMIT -------------------------
+
+  els.form.addEventListener('submit', function (evt) {
+    evt.preventDefault();
+    submitForm();
+  });
+
+  function validateForm() {
+    clearFieldErrors();
+    var errors = [];
+
+    SCORE_GROUPS.forEach(function (groupKey, idx) {
+      if (!getScoreValue(groupKey)) {
+        var container = document.querySelector('.score-scale[data-score-group="' + groupKey + '"]');
+        if (container) container.classList.add('field-error');
+        errors.push('Điểm mục ' + (idx + 1));
+      }
+    });
+
+    COMMENT_FIELDS.forEach(function (key) {
+      var el = document.getElementById(key);
+      if (!el.value.trim()) {
+        markError(el);
+        errors.push(el.previousElementSibling ? el.previousElementSibling.textContent : key);
+      }
+    });
+
+    var ketLuan = document.querySelector('input[name="ketLuan"]:checked');
+    if (!ketLuan) errors.push('KẾT LUẬN');
+
+    var xepLoai = document.querySelector('input[name="xepLoai"]:checked');
+    if (!xepLoai) errors.push('Xếp loại');
+
+    return errors;
+  }
+
+  function markError(el) { el.classList.add('field-error'); }
+  function clearFieldErrors() {
+    document.querySelectorAll('.field-error').forEach(function (el) {
+      el.classList.remove('field-error');
+    });
+  }
+
+  function setStatus(msg, type) {
+    els.submitStatus.textContent = msg;
+    els.submitStatus.className = 'submit-status' + (type ? ' ' + type : '');
+  }
+
+  function startSubmitDots() {
+    if (submitBtnOriginalText === null) submitBtnOriginalText = els.submitBtn.textContent;
+    var dotStates = ['.', '..', '...'];
+    var i = 0;
+    els.submitBtn.innerHTML = 'Đang nộp<span class="submit-dots" id="submitDots">' + dotStates[i] + '</span>';
+    var dotsEl = document.getElementById('submitDots');
+    submitDotsTimer = setInterval(function () {
+      i = (i + 1) % dotStates.length;
+      dotsEl.textContent = dotStates[i];
+    }, 300);
+  }
+
+  function stopSubmitDots() {
+    if (submitDotsTimer) { clearInterval(submitDotsTimer); submitDotsTimer = null; }
+    if (submitBtnOriginalText !== null) els.submitBtn.textContent = submitBtnOriginalText;
+  }
+
+  function submitForm() {
+    var errors = validateForm();
+    if (errors.length) {
+      setStatus('Vui lòng kiểm tra lại: ' + errors.join('; '), 'error');
+      return;
+    }
+    if (!scriptUrl) {
+      setStatus('Trang chưa sẵn sàng để nộp bài (chưa xác định được URL). Vui lòng tải lại trang và thử lại.', 'error');
+      return;
+    }
+
+    var payload = {
+      linkId: (window.PREFILL_DATA && window.PREFILL_DATA.linkId) || '',
+      ketLuan: document.querySelector('input[name="ketLuan"]:checked').value,
+      xepLoai: document.querySelector('input[name="xepLoai"]:checked').value,
+      ykien: document.getElementById('ykien').value.trim()
+    };
+    SCORE_GROUPS.forEach(function (key) { payload[key] = getScoreValue(key); });
+    COMMENT_FIELDS.forEach(function (key) { payload[key] = document.getElementById(key).value.trim(); });
+
+    els.submitBtn.disabled = true;
+    startSubmitDots();
+    setStatus('Đang gửi dữ liệu, vui lòng không đóng trang...', 'info');
+
+    fetch(scriptUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(payload)
+    })
+      .then(function (res) { return res.text(); })
+      .then(function (text) {
+        // doPost() luôn trả JSON hợp lệ. Nếu nhận về thứ khác (thường là trang HTML
+        // lạ do hạ tầng Google), rất có thể dữ liệu đã được ghi thành công phía
+        // server — coi là thành công thay vì báo lỗi khiến người dùng nộp trùng.
+        var json = null;
+        try {
+          json = JSON.parse(text);
+        } catch (parseErr) {
+          console.warn('[submitForm] Phản hồi không phải JSON — coi như thành công:', text.slice(0, 300));
+          onSubmitSuccess();
+          return;
+        }
+        if (json && json.success) {
+          onSubmitSuccess();
+        } else {
+          throw new Error((json && json.error) || 'Có lỗi không xác định.');
+        }
+      })
+      .catch(function (err) {
+        setStatus('Nộp bài thất bại: ' + (err && err.message ? err.message : err), 'error');
+        stopSubmitDots();
+        els.submitBtn.disabled = false;
+      });
+  }
+
+  function onSubmitSuccess() {
+    stopSubmitDots();
+    els.form.style.display = 'none';
+    els.successCard.style.display = '';
+    window.scrollTo(0, 0);
+  }
+
+})();
+</script>

@@ -1,0 +1,524 @@
+<script>
+(function () {
+  'use strict';
+
+  var FREE_TEXT_OPTION = 'Trước năm 2026';
+  var MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+  var EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  var deTaiCache = []; // danh sách đề tài của lựa chọn Khoa/phòng + Thời gian hiện tại
+  var scriptUrl = null; // URL thật của web app (không dùng window.location.href vì trang chạy trong iframe sandbox)
+
+  var submitBtnOriginalText = null; // chữ gốc của nút Nộp, lưu lại để khôi phục nếu nộp thất bại
+  var submitDotsTimer = null; // interval id của hiệu ứng "." -> ".." -> "..." trên nút Nộp
+
+  var els = {
+    form: document.getElementById('mainForm'),
+    khoaPhong: document.getElementById('khoaPhong'),
+    thoiGian: document.getElementById('thoiGian'),
+    tenDeTaiSelect: document.getElementById('tenDeTaiSelect'),
+    tenDeTaiText: document.getElementById('tenDeTaiText'),
+    tenDeTaiHint: document.getElementById('tenDeTaiHint'),
+    chuNhiem: document.getElementById('chuNhiem'),
+    thanhVien: document.getElementById('thanhVien'),
+    maSo: document.getElementById('maSo'),
+    maSoField: document.getElementById('maSoField'),
+    email: document.getElementById('email'),
+    pdfFile: document.getElementById('pdfFile'),
+    pdfFileName: document.getElementById('pdfFileName'),
+    hasEvidenceGroup: document.getElementById('hasEvidenceGroup'),
+    evidenceBox: document.getElementById('evidenceBox'),
+    evidenceFile: document.getElementById('evidenceFile'),
+    evidenceFileName: document.getElementById('evidenceFileName'),
+    evidenceLink: document.getElementById('evidenceLink'),
+    submitBtn: document.getElementById('submitBtn'),
+    submitStatus: document.getElementById('submitStatus'),
+    successCard: document.getElementById('successCard'),
+    resetBtn: document.getElementById('resetBtn')
+  };
+
+  // ------------------------- KHỞI TẠO -------------------------
+
+  document.addEventListener('DOMContentLoaded', function () {
+    google.script.run.withSuccessHandler(populateKhoaPhong).withFailureHandler(onLoadError).getKhoaPhongList();
+
+    // URL thật của web app: ưu tiên giá trị server đã truyền sẵn qua Index.html
+    // (window.SERVER_SCRIPT_URL, đáng tin cậy). google.script.url.getLocation() trên
+    // thực tế đôi khi KHÔNG gọi lại callback (gây lỗi "chưa xác định được URL" khi nộp
+    // bài), nên chỉ dùng làm phương án dự phòng nếu vì lý do gì đó server không truyền được.
+    if (window.SERVER_SCRIPT_URL) {
+      scriptUrl = window.SERVER_SCRIPT_URL;
+      console.log('[scriptUrl] lấy từ server:', scriptUrl);
+    } else if (google.script.url && google.script.url.getLocation) {
+      console.warn('[scriptUrl] server không truyền được URL, thử phương án dự phòng google.script.url.getLocation()');
+      google.script.url.getLocation(function (loc) {
+        scriptUrl = loc && loc.url ? loc.url : null;
+        console.log('[scriptUrl] lấy từ getLocation (dự phòng):', scriptUrl);
+      });
+    }
+    // Ghi chú: phần hiện "Server code version" ở cuối trang đã được chuyển sang script
+    // riêng trong Index.html (chạy độc lập với file này), để footer đó vẫn hiện được kể cả
+    // khi form đang ĐÓNG (lúc đó file JavaScript.html này không được include vào trang).
+  });
+
+  function populateKhoaPhong(list) {
+    (list || []).forEach(function (kp) {
+      var opt = document.createElement('option');
+      opt.value = kp;
+      opt.textContent = kp;
+      els.khoaPhong.appendChild(opt);
+    });
+  }
+
+  function onLoadError(err) {
+    setStatus('Không tải được danh sách Khoa/phòng: ' + (err && err.message ? err.message : err), 'error');
+  }
+
+  // ------------------------- CHẾ ĐỘ TÊN ĐỀ TÀI -------------------------
+
+  els.khoaPhong.addEventListener('change', refreshDeTaiMode);
+  els.thoiGian.addEventListener('change', refreshDeTaiMode);
+
+  function refreshDeTaiMode() {
+    var khoaPhong = els.khoaPhong.value;
+    var thoiGian = els.thoiGian.value;
+
+    clearAutoFields();
+
+    if (!thoiGian) {
+      showSelectMode();
+      els.tenDeTaiHint.textContent = 'Danh sách đề tài sẽ tự động hiển thị sau khi chọn Khoa/phòng và Thời gian đăng ký.';
+      return;
+    }
+
+    if (thoiGian === FREE_TEXT_OPTION) {
+      showTextMode();
+      return;
+    }
+
+    // Quý 1/2026 hoặc Quý 2/2026 -> cần tra cứu theo Khoa/phòng
+    showSelectMode();
+    if (!khoaPhong) {
+      els.tenDeTaiHint.textContent = 'Vui lòng chọn Khoa/phòng để hiển thị danh sách đề tài.';
+      clearDeTaiSelect('-- Chọn Khoa/phòng trước --');
+      return;
+    }
+
+    clearDeTaiSelect('-- Đang tải danh sách đề tài... --');
+    els.tenDeTaiHint.textContent = 'Đang tải danh sách đề tài...';
+
+    console.log('[getDeTaiList] gọi với khoaPhong=%s, thoiGian=%s', khoaPhong, thoiGian);
+
+    google.script.run
+      .withSuccessHandler(function (jsonText) {
+        // Server trả về CHUỖI JSON (không phải mảng object thô) để tránh việc
+        // google.script.run tự marshal object phức tạp và làm rớt field (đã gặp thực tế).
+        var list;
+        try {
+          list = JSON.parse(jsonText);
+        } catch (e) {
+          console.error('[getDeTaiList] không parse được JSON trả về:', jsonText, e);
+          clearDeTaiSelect('-- Lỗi dữ liệu trả về --');
+          els.tenDeTaiHint.textContent = 'Lỗi dữ liệu trả về từ server (không phải JSON hợp lệ).';
+          return;
+        }
+        populateDeTaiSelect(list, khoaPhong, thoiGian);
+      })
+      .withFailureHandler(function (err) {
+        console.error('[getDeTaiList] lỗi:', err);
+        clearDeTaiSelect('-- Không tải được danh sách --');
+        els.tenDeTaiHint.textContent = 'Lỗi tải danh sách đề tài: ' + (err && err.message ? err.message : err);
+      })
+      .getDeTaiList(khoaPhong, thoiGian);
+  }
+
+  function populateDeTaiSelect(list, khoaPhong, thoiGian) {
+    console.log('[getDeTaiList] kết quả nhận được cho khoaPhong=%s, thoiGian=%s:', khoaPhong, thoiGian, list);
+    if (list && list.length) {
+      console.log('[getDeTaiList] object đầu tiên (JSON):', JSON.stringify(list[0]));
+    }
+
+    // Bỏ qua nếu người dùng đã đổi lựa chọn trong lúc chờ phản hồi
+    if (els.khoaPhong.value !== khoaPhong || els.thoiGian.value !== thoiGian) {
+      console.log('[getDeTaiList] bỏ qua vì lựa chọn đã đổi (hiện tại: %s / %s)', els.khoaPhong.value, els.thoiGian.value);
+      return;
+    }
+
+    deTaiCache = list || [];
+    resetDeTaiSelect(deTaiCache.length ? '-- Chọn đề tài --' : '-- Không tìm thấy đề tài nào của Khoa/phòng này --');
+
+    deTaiCache.forEach(function (item, idx) {
+      var opt = document.createElement('option');
+      opt.value = String(idx);
+      opt.textContent = item.tenDeTai;
+      els.tenDeTaiSelect.appendChild(opt);
+    });
+
+    els.tenDeTaiHint.textContent = deTaiCache.length
+      ? 'Chọn đúng tên đề tài đã đăng ký; các thông tin còn lại sẽ tự động điền.'
+      : 'Không tìm thấy đề tài nào đã đăng ký cho Khoa/phòng và Thời gian đã chọn. Vui lòng kiểm tra lại lựa chọn hoặc liên hệ Viện ARiHA.';
+  }
+
+  els.tenDeTaiSelect.addEventListener('change', function () {
+    var idx = els.tenDeTaiSelect.value;
+    if (idx === '' || !deTaiCache[idx]) {
+      els.chuNhiem.value = '';
+      els.thanhVien.value = '';
+      els.maSo.value = '';
+      return;
+    }
+    var item = deTaiCache[idx];
+    els.chuNhiem.value = item.chuNhiem || '';
+    els.thanhVien.value = item.thanhVien || '';
+    els.maSo.value = item.maSo || '';
+  });
+
+  function showSelectMode() {
+    els.tenDeTaiSelect.style.display = '';
+    els.tenDeTaiSelect.required = true;
+    els.tenDeTaiText.style.display = 'none';
+    els.tenDeTaiText.required = false;
+
+    els.chuNhiem.readOnly = true;
+    els.thanhVien.readOnly = true;
+
+    els.maSoField.style.display = '';
+  }
+
+  function showTextMode() {
+    els.tenDeTaiSelect.style.display = 'none';
+    els.tenDeTaiSelect.required = false;
+    els.tenDeTaiText.style.display = '';
+    els.tenDeTaiText.required = true;
+    els.tenDeTaiHint.textContent = 'Đề tài đăng ký trước năm 2026: vui lòng tự nhập thông tin đề tài.';
+
+    els.chuNhiem.readOnly = false;
+    els.thanhVien.readOnly = false;
+
+    els.maSoField.style.display = 'none';
+  }
+
+  // CHÚ Ý: hàm này CHỈ vẽ lại <select> với 1 placeholder, KHÔNG được đụng vào deTaiCache —
+  // trước đây có dòng "deTaiCache = []" ở đây, khiến populateDeTaiSelect() (gọi hàm này
+  // NGAY SAU khi vừa set deTaiCache = list) tự xoá sạch cache của chính nó trước khi kịp
+  // forEach để tạo <option>, nên dữ liệu về đúng nhưng dropdown luôn trống. Nơi nào thật
+  // sự cần xoá cache (chưa chọn Khoa/phòng, đang tải, lỗi, reset form...) thì tự set
+  // deTaiCache = [] ngay tại chỗ gọi, không dựa vào hàm này nữa.
+  function resetDeTaiSelect(placeholder) {
+    els.tenDeTaiSelect.innerHTML = '';
+    var opt = document.createElement('option');
+    opt.value = '';
+    opt.textContent = placeholder;
+    els.tenDeTaiSelect.appendChild(opt);
+  }
+
+  // Dùng ở mọi nơi CẦN xoá sạch danh sách đề tài đã tra được trước đó (chưa chọn
+  // Khoa/phòng, đang tải lại, lỗi, reset form...). KHÔNG dùng bên trong
+  // populateDeTaiSelect() vì ở đó deTaiCache vừa được set = danh sách mới nhận.
+  function clearDeTaiSelect(placeholder) {
+    deTaiCache = [];
+    resetDeTaiSelect(placeholder);
+  }
+
+  function clearAutoFields() {
+    els.chuNhiem.value = '';
+    els.thanhVien.value = '';
+    els.maSo.value = '';
+    els.tenDeTaiText.value = '';
+  }
+
+  // ------------------------- FILE UPLOAD -------------------------
+
+  els.pdfFile.addEventListener('change', function () {
+    handleFileChosen(els.pdfFile, els.pdfFileName, true);
+  });
+  els.evidenceFile.addEventListener('change', function () {
+    handleFileChosen(els.evidenceFile, els.evidenceFileName, true);
+  });
+
+  function handleFileChosen(input, nameEl, mustBePdf) {
+    var file = input.files && input.files[0];
+    if (!file) {
+      nameEl.textContent = 'Không có tệp nào được chọn';
+      return;
+    }
+    var isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+    if (mustBePdf && !isPdf) {
+      alert('Chỉ chấp nhận file định dạng PDF.');
+      input.value = '';
+      nameEl.textContent = 'Không có tệp nào được chọn';
+      return;
+    }
+    if (file.size > MAX_FILE_SIZE) {
+      alert('Kích thước tệp vượt quá 10MB. Vui lòng chọn tệp khác.');
+      input.value = '';
+      nameEl.textContent = 'Không có tệp nào được chọn';
+      return;
+    }
+    nameEl.textContent = file.name + ' (' + formatBytes(file.size) + ')';
+  }
+
+  // ------------------------- CÓ MINH CHỨNG ĐĂNG TẠP CHÍ? -------------------------
+
+  els.hasEvidenceGroup.addEventListener('change', function () {
+    var checked = document.querySelector('input[name="hasEvidence"]:checked');
+    var isYes = checked && checked.value === 'Có';
+    els.evidenceBox.style.display = isYes ? '' : 'none';
+    if (!isYes) {
+      // Chọn "Không" -> xoá dữ liệu minh chứng đã nhập trước đó (nếu có) để khỏi gửi nhầm
+      els.evidenceFile.value = '';
+      els.evidenceFileName.textContent = 'Không có tệp nào được chọn';
+      els.evidenceLink.value = '';
+    }
+  });
+
+  function formatBytes(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  }
+
+  function fileToBase64(file) {
+    return new Promise(function (resolve, reject) {
+      var reader = new FileReader();
+      reader.onload = function () {
+        var result = reader.result; // data:<mime>;base64,xxxx
+        var base64 = result.substring(result.indexOf(',') + 1);
+        resolve({ data: base64, name: file.name, mimeType: file.type || 'application/pdf' });
+      };
+      reader.onerror = function () { reject(new Error('Không đọc được tệp ' + file.name)); };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  // ------------------------- SUBMIT -------------------------
+
+  els.form.addEventListener('submit', function (evt) {
+    evt.preventDefault();
+    submitForm();
+  });
+
+  function getTenDeTaiValue() {
+    if (els.thoiGian.value === FREE_TEXT_OPTION) return els.tenDeTaiText.value.trim();
+    var idx = els.tenDeTaiSelect.value;
+    return (idx !== '' && deTaiCache[idx]) ? deTaiCache[idx].tenDeTai : '';
+  }
+
+  function validateForm() {
+    clearFieldErrors();
+    var errors = [];
+
+    function req(el, label) {
+      var val = (el.value || '').trim();
+      if (!val) {
+        markError(el);
+        errors.push(label);
+      }
+      return val;
+    }
+
+    req(els.khoaPhong, 'Khoa/phòng');
+    req(els.thoiGian, 'Thời gian đăng ký đề tài');
+
+    if (els.thoiGian.value === FREE_TEXT_OPTION) {
+      req(els.tenDeTaiText, 'Tên đề tài');
+    } else {
+      if (!getTenDeTaiValue()) {
+        markError(els.tenDeTaiSelect);
+        errors.push('Tên đề tài');
+      }
+    }
+
+    req(els.chuNhiem, 'Chủ nhiệm đề tài');
+    req(els.thanhVien, 'Thành viên tham gia đề tài');
+
+    var hoTen = document.getElementById('hoTen');
+    var sdt = document.getElementById('soDienThoai');
+    req(hoTen, 'Họ và tên của người điền form');
+    var sdtVal = req(sdt, 'Số điện thoại của người điền form');
+    if (sdtVal && !/^0\d{9}$/.test(sdtVal)) {
+      markError(sdt);
+      errors.push('Số điện thoại không hợp lệ (bắt đầu bằng số 0, đủ 10 chữ số)');
+    }
+
+    var emailVal = req(els.email, 'Email của người điền form');
+    if (emailVal && !EMAIL_REGEX.test(emailVal)) {
+      markError(els.email);
+      errors.push('Email của người điền form không hợp lệ');
+    }
+
+    if (!els.pdfFile.files || !els.pdfFile.files[0]) {
+      errors.push('File PDF nghiệm thu đề tài');
+    }
+
+    var submitType = document.querySelector('input[name="submitType"]:checked');
+    if (!submitType) {
+      errors.push('Vui lòng chọn "Nộp mới" hoặc "Nộp lại"');
+    }
+
+    var hasEvidence = document.querySelector('input[name="hasEvidence"]:checked');
+    if (!hasEvidence) {
+      errors.push('Vui lòng chọn "Có" hoặc "Không" cho câu hỏi minh chứng đăng tạp chí');
+    } else if (hasEvidence.value === 'Có') {
+      var hasFile = els.evidenceFile.files && els.evidenceFile.files[0];
+      var hasLink = els.evidenceLink.value.trim();
+      if (!hasFile && !hasLink) {
+        markError(els.evidenceLink);
+        errors.push('Vui lòng tải file PDF hoặc dán liên kết minh chứng (đã chọn "Có")');
+      }
+    }
+
+    // Không còn bắt buộc — người điền có thể để trống nếu không có đề xuất.
+
+    return errors;
+  }
+
+  function markError(el) { el.classList.add('field-error'); }
+  function clearFieldErrors() {
+    document.querySelectorAll('.field-error').forEach(function (el) {
+      el.classList.remove('field-error');
+    });
+  }
+
+  function setStatus(msg, type) {
+    els.submitStatus.textContent = msg;
+    els.submitStatus.className = 'submit-status' + (type ? ' ' + type : '');
+  }
+
+  // Hiệu ứng "." -> ".." -> "..." rồi quay lại "." trên nút Nộp trong lúc chờ xử lý,
+  // đổi mỗi 0.1 giây, để người dùng biết trang vẫn đang chạy (nhất là khi file lớn,
+  // upload có thể mất vài giây tới vài chục giây chứ không phản hồi ngay).
+  function startSubmitDots() {
+    if (submitBtnOriginalText === null) submitBtnOriginalText = els.submitBtn.textContent;
+    var dotStates = ['.', '..', '...'];
+    var i = 0;
+    els.submitBtn.innerHTML = 'Đang nộp<span class="submit-dots" id="submitDots">' + dotStates[i] + '</span>';
+    var dotsEl = document.getElementById('submitDots');
+    submitDotsTimer = setInterval(function () {
+      i = (i + 1) % dotStates.length;
+      dotsEl.textContent = dotStates[i];
+    }, 100);
+  }
+
+  function stopSubmitDots() {
+    if (submitDotsTimer) {
+      clearInterval(submitDotsTimer);
+      submitDotsTimer = null;
+    }
+    if (submitBtnOriginalText !== null) {
+      els.submitBtn.textContent = submitBtnOriginalText;
+    }
+  }
+
+  function submitForm() {
+    var errors = validateForm();
+    if (errors.length) {
+      setStatus('Vui lòng kiểm tra lại: ' + errors.join('; '), 'error');
+      return;
+    }
+
+    if (!scriptUrl) {
+      setStatus('Trang chưa sẵn sàng để nộp bài (chưa xác định được URL). Vui lòng tải lại trang và thử lại.', 'error');
+      return;
+    }
+
+    els.submitBtn.disabled = true;
+    startSubmitDots();
+    setStatus('Đang xử lý tệp đính kèm, vui lòng đợi (có thể mất một lúc với file lớn)...', 'info');
+
+    var hasEvidenceVal = document.querySelector('input[name="hasEvidence"]:checked').value;
+
+    var payload = {
+      hoTen: document.getElementById('hoTen').value.trim(),
+      soDienThoai: document.getElementById('soDienThoai').value.trim(),
+      email: els.email.value.trim(),
+      khoaPhong: els.khoaPhong.value,
+      thoiGian: els.thoiGian.value,
+      tenDeTai: getTenDeTaiValue(),
+      chuNhiem: els.chuNhiem.value.trim(),
+      thanhVien: els.thanhVien.value.trim(),
+      maSo: els.maSo.value.trim(),
+      hasEvidence: hasEvidenceVal,
+      evidenceLink: hasEvidenceVal === 'Có' ? els.evidenceLink.value.trim() : '',
+      submitType: document.querySelector('input[name="submitType"]:checked').value,
+      reviewers: document.getElementById('reviewers').value.trim(),
+      unwantedReviewers: document.getElementById('unwantedReviewers').value.trim()
+    };
+
+    var pdfFile = els.pdfFile.files[0];
+    var evidenceFile = hasEvidenceVal === 'Có' ? els.evidenceFile.files[0] : null;
+
+    var filePromises = [fileToBase64(pdfFile)];
+    if (evidenceFile) filePromises.push(fileToBase64(evidenceFile));
+
+    Promise.all(filePromises)
+      .then(function (results) {
+        payload.pdfFile = results[0];
+        if (evidenceFile) payload.evidenceFile = results[1];
+
+        setStatus('Đang gửi dữ liệu, vui lòng không đóng trang...', 'info');
+
+        return fetch(scriptUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify(payload)
+        });
+      })
+      .then(function (res) { return res.text(); })
+      .then(function (text) {
+        // doPost() trong Code.gs LUÔN trả về JSON hợp lệ (kể cả khi có lỗi, nhờ khối
+        // try/catch bọc quanh handleSubmit()). Nếu nhận về thứ KHÔNG phải JSON — ví dụ
+        // một trang HTML bắt đầu bằng "<!DOCTYPE ..." — thì lỗi đó không đến từ code của
+        // form, mà từ một trang trung gian tạm thời phía hạ tầng Google Apps Script (đã
+        // gặp thực tế: form báo "Nộp bài thất bại" nhưng dữ liệu vẫn được ghi vào Sheet
+        // bình thường, tức là handleSubmit() đã chạy xong, chỉ có phản hồi trả về trình
+        // duyệt bị "lạc" thành trang HTML). Vì vậy, coi trường hợp này là ĐÃ NỘP THÀNH CÔNG
+        // thay vì báo lỗi, để không làm người nộp hoang mang/nộp lại trùng lặp không cần thiết.
+        var json = null;
+        try {
+          json = JSON.parse(text);
+        } catch (parseErr) {
+          console.warn('[submitForm] Phản hồi không phải JSON hợp lệ (rất có thể vẫn đã nộp ' +
+            'thành công phía server) — coi như thành công. Nội dung nhận được:', text.slice(0, 300));
+          onSubmitSuccess();
+          return;
+        }
+        if (json && json.success) {
+          onSubmitSuccess();
+        } else {
+          throw new Error((json && json.error) || 'Có lỗi không xác định.');
+        }
+      })
+      .catch(function (err) {
+        setStatus('Nộp bài thất bại: ' + (err && err.message ? err.message : err), 'error');
+        stopSubmitDots();
+        els.submitBtn.disabled = false;
+      });
+  }
+
+  function onSubmitSuccess() {
+    stopSubmitDots();
+    els.form.style.display = 'none';
+    els.successCard.style.display = '';
+    window.scrollTo(0, 0);
+  }
+
+  els.resetBtn.addEventListener('click', function () {
+    stopSubmitDots();
+    els.form.reset();
+    clearFieldErrors();
+    clearAutoFields();
+    clearDeTaiSelect('-- Chọn Khoa/phòng và Thời gian trước --');
+    showSelectMode();
+    els.pdfFileName.textContent = 'Không có tệp nào được chọn';
+    els.evidenceFileName.textContent = 'Không có tệp nào được chọn';
+    els.evidenceBox.style.display = 'none';
+    setStatus('', '');
+    els.submitBtn.disabled = false;
+    els.successCard.style.display = 'none';
+    els.form.style.display = '';
+    window.scrollTo(0, 0);
+  });
+
+})();
+</script>
