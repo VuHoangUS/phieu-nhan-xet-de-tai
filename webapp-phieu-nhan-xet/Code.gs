@@ -6,23 +6,21 @@
  * shortener riêng ghi vào sheet "Shortener" (bị giới hạn/cồng kềnh khi số đề tài
  * tăng lên).
  *
- * CÁCH BỐ TRÍ DỮ LIỆU (đúng theo sheet "DS_đề_tài_thẩm_định" thật của Viện):
- * mỗi ĐỀ TÀI là MỘT DÒNG, có tới 2 người thẩm định (Thẩm định 1 / Thẩm định 2),
- * mỗi người có một link nhận xét RIÊNG:
- *   ... | Google form link | Shorten Link | NOTE | Thẩm định 1 | Email TĐ1 |
- *   Thẩm định 2 | Email TĐ2 | GG form link 2 | Shorten Link 2
- * Script này ghi ĐÈ link cá nhân hoá mới (dạng "<URL webapp>?id=<mã>") vào đúng
- * 2 cột "Shorten Link" / "Shorten Link 2" đã có sẵn đó — không cần thêm cột mới
- * cho phần link gửi đi. Mỗi người thẩm định có mã riêng, không đụng tới người kia.
+ * CÁCH BỐ TRÍ DỮ LIỆU: mỗi ĐỀ TÀI là MỘT DÒNG trong sheet tra cứu, có tới 2 người
+ * thẩm định (Thẩm định 1 / Thẩm định 2), mỗi người một link nhận xét RIÊNG. Tên cột
+ * cụ thể tra theo LOOKUP_COLUMN_ALIASES/REVIEWER_SLOTS bên dưới — cấu hình hiện tại
+ * (2026-09-22) trỏ vào sheet "Nghiệm thu 2026 - Q3" (file 19BLa5s...), cột đích ghi
+ * link cá nhân hoá là "Form 1" / "Form 2" đã có sẵn trong sheet đó. Đổi
+ * LOOKUP_SPREADSHEET_ID/LOOKUP_SHEET_NAME khi chuyển sang đợt/quý khác.
  *
  * CÁCH HOẠT ĐỘNG:
  *  - doGet() nhận ?id=<mã>, dò trong CẢ 2 cột mã liên kết (TĐ1 và TĐ2, script tự
- *    tạo 2 cột phụ "Mã liên kết TĐ1"/"Mã liên kết TĐ2" để lưu mã — không phải cột
- *    hiển thị link) của mọi dòng trong "DS_đề_tài_thẩm_định" để tìm đúng đề tài +
- *    đúng người thẩm định, rồi điền sẵn form NGAY LÚC MỞ TRANG (không cache) — sửa
- *    dữ liệu trong sheet là form tự cập nhật, không cần tạo lại link.
- *  - Khi nộp bài, server KHÔNG tin các trường Họ tên/Tên đề tài/Chủ nhiệm/PDF mà
- *    trình duyệt gửi lên — tự tra cứu lại theo mã liên kết để tránh sửa tay (F12).
+ *    tạo 2 cột phụ "Mã liên kết TĐ1"/"Mã liên kết TĐ2" để lưu mã nếu sheet chưa có
+ *    sẵn) của mọi dòng trong sheet tra cứu để tìm đúng đề tài + đúng người thẩm
+ *    định, rồi điền sẵn form NGAY LÚC MỞ TRANG (không cache) — sửa dữ liệu trong
+ *    sheet là form tự cập nhật, không cần tạo lại link.
+ *  - Khi nộp bài, server KHÔNG tin các trường Họ tên/Tên đề tài/Mã số đề tài/File
+ *    mà trình duyệt gửi lên — tự tra cứu lại theo mã liên kết để tránh sửa tay (F12).
  *
  * Cấu trúc file:
  *  - Code.gs        : logic phía server (file này)
@@ -36,13 +34,16 @@
 
 // Đổi chuỗi này mỗi khi sửa code, rồi so với dòng "Server code version" hiện ở cuối
 // trang web đã deploy — nếu KHÔNG khớp nghĩa là bản deploy đang test vẫn là code CŨ.
-var CODE_VERSION = 'v2-2026-09-21-two-reviewer-slots';
+var CODE_VERSION = 'v3-2026-09-22-q3-masodetai-2files';
 
 // ============================= CẤU HÌNH =============================
 
-// Sheet TRA CỨU nguồn dữ liệu để điền sẵn (đề tài đã đăng ký thẩm định).
-var LOOKUP_SPREADSHEET_ID = '1IuQdVd1944TKO8gMo98VuG-7-BPQ421q5tx1GDWOWRs';
-var LOOKUP_SHEET_NAME = 'DS_đề_tài_thẩm_định';
+// Sheet TRA CỨU nguồn dữ liệu để điền sẵn (đề tài đã nộp nghiệm thu, chờ thẩm định).
+// Đổi 2 dòng dưới khi chuyển sang đợt/quý khác — LOOKUP_COLUMN_ALIASES/REVIEWER_SLOTS
+// bên dưới đã liệt kê alias cho cả sheet "Nghiệm thu 2026 - Q3" (hiện tại) lẫn sheet
+// "DS_đề_tài_thẩm_định" (đợt 2025) nên không cần sửa gì khác ngoài 2 hằng số này.
+var LOOKUP_SPREADSHEET_ID = '19BLa5sH0xyLrvUa-F7cbuuiVRb7KPyuzaKoWMKeLQCE';
+var LOOKUP_SHEET_NAME = 'Nghiệm thu 2026 - Q3';
 
 // Sheet GHI KẾT QUẢ nhận xét (nơi lưu câu trả lời của người nhận xét) — chính là
 // sheet trả lời của Google Form "PHIẾU NHẬN XÉT ĐỀ TÀI..." các quý trước, để dữ
@@ -159,26 +160,33 @@ function setupConfigSheet() {
 
 // ============================= TRA CỨU / SINH LINK CÁ NHÂN HOÁ =============================
 
-// Cột dữ liệu DÙNG CHUNG cho cả 2 người thẩm định (đề tài, chủ nhiệm, PDF) — liệt
-// kê hết các tên cột có thể gặp để đổi tên cột trong Sheet không làm hỏng tra cứu.
+// Cột dữ liệu DÙNG CHUNG cho cả 2 người thẩm định (đề tài, mã số, 2 file PDF) —
+// liệt kê hết các tên cột có thể gặp (nhiều sheet/đợt khác tên) để đổi tên cột
+// trong Sheet không làm hỏng tra cứu.
 var LOOKUP_COLUMN_ALIASES = {
   tenDeTai: ['Tên đề tài'],
-  chuNhiem: ['Chủ nhiệm đề tài', 'Chủ nhiệm'],
-  pdfLink: ['Bản PDF nghiệm thu đề tài', 'File PDF của đề tài nghiên cứu trên',
-    'File PDF của đề tài nghiên cứu trên:', 'File PDF của đề tài', 'File PDF', 'Link PDF', 'PDF']
+  maSoDeTai: ['Mã số đề tài', 'Mã số'],
+  // File đề cương (bản đăng ký ban đầu, trước khi nghiệm thu).
+  pdfDeCuong: ['File đề cương'],
+  // File nghiệm thu (bản báo cáo cuối cùng) — đây là file người nhận xét chấm điểm.
+  pdfNghiemThu: ['Tải lên file PDF nghiệm thu đề tài', 'Bản PDF nghiệm thu đề tài',
+    'File PDF của đề tài nghiên cứu trên:', 'File PDF của đề tài nghiên cứu trên',
+    'File PDF của đề tài', 'File PDF', 'Link PDF', 'PDF']
 };
 
-// 2 "chỗ" thẩm định trên mỗi dòng đề tài — đúng theo bố cục cột thật:
-// ... | Shorten Link | NOTE | Thẩm định 1 | Email TĐ1 | Thẩm định 2 | Email TĐ2 | GG form link 2 | Shorten Link 2
-// personalLinkAliases trỏ vào ĐÚNG cột "Shorten Link" / "Shorten Link 2" đã có sẵn
-// (script ghi đè link cá nhân hoá mới vào đó); linkIdHeader/reviewedAtHeader là 2
-// cột phụ (lưu mã thô + mốc thời gian đã nhận xét) mà script tự tạo nếu chưa có.
+// 2 "chỗ" thẩm định trên mỗi dòng đề tài. personalLinkAliases trỏ vào cột hiển thị
+// link cá nhân hoá đã có sẵn trong sheet ("Form 1"/"Form 2" ở sheet "Nghiệm thu
+// 2026 - Q3" hiện tại, hoặc "Shorten Link"/"Shorten Link 2" ở sheet đợt cũ) — script
+// GHI ĐÈ link mới vào đúng cột đó, không tạo cột hiển thị link mới. linkIdHeader/
+// reviewedAtHeader là 2 cột phụ (lưu mã thô + mốc thời gian đã nhận xét) — script tự
+// tạo nếu sheet chưa có, còn nếu đã có sẵn (như "Mã liên kết TĐ1/TĐ2" ở sheet Q3)
+// thì dùng luôn cột đó.
 var REVIEWER_SLOTS = [
   {
     slot: 1,
     nameAliases: ['Thẩm định 1'],
     emailAliases: ['Email TĐ1', 'Email TD1'],
-    personalLinkAliases: ['Shorten Link'],
+    personalLinkAliases: ['Form 1', 'Shorten Link'],
     linkIdHeader: 'Mã liên kết TĐ1',
     reviewedAtHeader: 'Đã nhận xét lúc TĐ1'
   },
@@ -186,7 +194,7 @@ var REVIEWER_SLOTS = [
     slot: 2,
     nameAliases: ['Thẩm định 2'],
     emailAliases: ['Email TĐ2', 'Email TD2'],
-    personalLinkAliases: ['Shorten Link 2'],
+    personalLinkAliases: ['Form 2', 'Shorten Link 2'],
     linkIdHeader: 'Mã liên kết TĐ2',
     reviewedAtHeader: 'Đã nhận xét lúc TĐ2'
   }
@@ -299,8 +307,9 @@ function lookupPrefillById_(linkId) {
             reviewerName: String(row[idx.name] || '').trim(),
             reviewerEmail: String(row[idx.email] || '').trim(),
             tenDeTai: String(row[common.tenDeTai] || '').trim(),
-            chuNhiem: String(row[common.chuNhiem] || '').trim(),
-            pdfLink: String(row[common.pdfLink] || '').trim()
+            maSoDeTai: String(row[common.maSoDeTai] || '').trim(),
+            pdfDeCuong: String(row[common.pdfDeCuong] || '').trim(),
+            pdfNghiemThu: String(row[common.pdfNghiemThu] || '').trim()
           }
         };
       }
@@ -422,8 +431,12 @@ var RESPONSE_FIELD_HEADERS = {
   reviewerName: 'Họ và tên người nhận xét',
   reviewerEmail: 'Email người nhận xét',
   tenDeTai: 'Tên đề tài',
-  chuNhiem: 'Chủ nhiệm đề tài',
-  pdfLink: 'File PDF của đề tài nghiên cứu trên:',
+  maSoDeTai: 'Mã số đề tài',
+  pdfDeCuong: 'File đề cương',
+  // Dùng lại đúng cột PDF đã có sẵn trong sheet trả lời Google Form cũ, để nối
+  // tiếp đúng vào lịch sử dữ liệu — chỉ đổi nguồn lấy dữ liệu (nay là "Tải lên
+  // file PDF nghiệm thu đề tài" thay vì trường PDF gộp chung trước đây).
+  pdfNghiemThu: 'File PDF của đề tài nghiên cứu trên:',
   diemDatVanDe: '1. Đặt vấn đề [Giới thiệu được vấn đề hoặc khoảng cách giữa mong muốn và thực tế]',
   diemMucTieu: '2. Mục tiêu [Đưa ra mục tiêu rõ ràng liên quan đến chủ đề nghiên cứu]',
   diemPPNCThietKe: '3. Phương pháp nghiên cứu [Thiết kế và đối tượng nghiên cứu được mô tả rõ ràng, phù hợp với nội dung và đáp ứng được mục tiêu một cách hiệu quả]',
@@ -466,8 +479,9 @@ function handleSubmit(payload) {
       reviewerName: match.prefill.reviewerName,
       reviewerEmail: match.prefill.reviewerEmail,
       tenDeTai: match.prefill.tenDeTai,
-      chuNhiem: match.prefill.chuNhiem,
-      pdfLink: match.prefill.pdfLink,
+      maSoDeTai: match.prefill.maSoDeTai,
+      pdfDeCuong: match.prefill.pdfDeCuong,
+      pdfNghiemThu: match.prefill.pdfNghiemThu,
       ketLuan: ketLuan,
       ykien: String(payload.ykien || '').trim(),
       xepLoai: xepLoai
@@ -490,14 +504,16 @@ function validateAssessment_(p) {
     var v = Number(p[f.key]);
     if (!v || v < 1 || v > 5) missing.push(f.label);
   });
-  COMMENT_FIELDS.forEach(function (f) {
-    if (!String(p[f.key] || '').trim()) missing.push(f.label);
-  });
+  // Phần B (COMMENT_FIELDS) không bắt buộc — không kiểm tra rỗng.
+
   var ketLuan = String(p.ketLuan || '').trim();
   if (ketLuan !== 'ĐẠT' && ketLuan !== 'KHÔNG ĐẠT') missing.push('KẾT LUẬN');
+
+  // KHÔNG ĐẠT -> Xếp loại bị ép về "KHÔNG ĐẠT" ở handleSubmit() bất kể giá trị gửi
+  // lên, nên chỉ cần kiểm tra chiều ngược lại: ĐẠT thì không được xếp loại KHÔNG ĐẠT.
   if (ketLuan === 'ĐẠT') {
     var xepLoai = String(p.xepLoai || '').trim();
-    if (['Giỏi', 'Khá', 'Trung bình', 'KHÔNG ĐẠT'].indexOf(xepLoai) === -1) missing.push('Xếp loại');
+    if (['Giỏi', 'Khá', 'Trung bình'].indexOf(xepLoai) === -1) missing.push('Xếp loại');
   }
   if (missing.length) {
     throw new Error('Vui lòng điền đầy đủ: ' + missing.join(', '));

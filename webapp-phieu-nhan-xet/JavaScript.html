@@ -43,27 +43,30 @@
     setText('pf-reviewerName', textOrDash(p.reviewerName));
     setText('pf-reviewerEmail', textOrDash(p.reviewerEmail));
     setText('pf-tenDeTai', textOrDash(p.tenDeTai));
-    setText('pf-chuNhiem', textOrDash(p.chuNhiem));
-
-    var pdfEl = document.getElementById('pf-pdfLink');
-    if (pdfEl) {
-      if (p.pdfLink) {
-        var a = document.createElement('a');
-        a.href = p.pdfLink;
-        a.target = '_blank';
-        a.rel = 'noopener';
-        a.textContent = 'Mở file PDF của đề tài ↗';
-        pdfEl.innerHTML = '';
-        pdfEl.appendChild(a);
-      } else {
-        pdfEl.textContent = '(không có dữ liệu)';
-      }
-    }
+    setText('pf-maSoDeTai', textOrDash(p.maSoDeTai));
+    setFileLink('pf-pdfDeCuong', p.pdfDeCuong, 'Mở file đề cương ↗');
+    setFileLink('pf-pdfNghiemThu', p.pdfNghiemThu, 'Mở file nghiệm thu ↗');
   }
 
   function setText(id, text) {
     var el = document.getElementById(id);
     if (el) el.textContent = text;
+  }
+
+  function setFileLink(id, url, label) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    if (url) {
+      var a = document.createElement('a');
+      a.href = url;
+      a.target = '_blank';
+      a.rel = 'noopener';
+      a.textContent = label;
+      el.innerHTML = '';
+      el.appendChild(a);
+    } else {
+      el.textContent = '(không có dữ liệu)';
+    }
   }
 
   // ------------------------- THANG ĐIỂM 1-5 -------------------------
@@ -80,8 +83,14 @@
         input.name = groupKey;
         input.value = String(v);
         input.required = true;
+        var num = document.createElement('span');
+        num.className = 'score-num';
+        num.textContent = String(v);
+        var dot = document.createElement('span');
+        dot.className = 'score-dot';
         label.appendChild(input);
-        label.appendChild(document.createTextNode(String(v)));
+        label.appendChild(num);
+        label.appendChild(dot);
         container.appendChild(label);
       }
       var caption = document.createElement('div');
@@ -104,27 +113,29 @@
     applyKetLuanRule();
   }
 
+  // "KHÔNG ĐẠT" -> khoá Xếp loại = KHÔNG ĐẠT (bắt buộc). "ĐẠT" -> khoá NGƯỢC LẠI,
+  // không cho chọn Xếp loại = KHÔNG ĐẠT (một đề tài đã ĐẠT thì không thể xếp loại
+  // KHÔNG ĐẠT). Chưa chọn KẾT LUẬN -> để tất cả Xếp loại mở như bình thường.
   function applyKetLuanRule() {
     var checked = document.querySelector('input[name="ketLuan"]:checked');
-    var isKhongDat = checked && checked.value === 'KHÔNG ĐẠT';
+    var ketLuanVal = checked ? checked.value : '';
     var pills = els.xepLoaiGroup.querySelectorAll('.radio-pill');
     pills.forEach(function (pill) {
       var input = pill.querySelector('input');
       if (!input) return;
-      if (isKhongDat) {
-        if (input.value === 'KHÔNG ĐẠT') {
-          input.checked = true;
-          input.disabled = false;
-          pill.classList.remove('is-disabled');
-        } else {
-          input.checked = false;
-          input.disabled = true;
-          pill.classList.add('is-disabled');
-        }
+      var isKhongDatOption = input.value === 'KHÔNG ĐẠT';
+
+      if (ketLuanVal === 'KHÔNG ĐẠT') {
+        input.disabled = !isKhongDatOption;
+        pill.classList.toggle('is-disabled', !isKhongDatOption);
+        if (isKhongDatOption) input.checked = true;
+      } else if (ketLuanVal === 'ĐẠT') {
+        input.disabled = isKhongDatOption;
+        pill.classList.toggle('is-disabled', isKhongDatOption);
+        if (isKhongDatOption) input.checked = false;
       } else {
         input.disabled = false;
         pill.classList.remove('is-disabled');
-        if (input.value === 'KHÔNG ĐẠT') input.checked = false;
       }
     });
   }
@@ -148,13 +159,7 @@
       }
     });
 
-    COMMENT_FIELDS.forEach(function (key) {
-      var el = document.getElementById(key);
-      if (!el.value.trim()) {
-        markError(el);
-        errors.push(el.previousElementSibling ? el.previousElementSibling.textContent : key);
-      }
-    });
+    // Phần B (COMMENT_FIELDS) không còn bắt buộc — người nhận xét có thể để trống.
 
     var ketLuan = document.querySelector('input[name="ketLuan"]:checked');
     if (!ketLuan) errors.push('KẾT LUẬN');
@@ -165,7 +170,6 @@
     return errors;
   }
 
-  function markError(el) { el.classList.add('field-error'); }
   function clearFieldErrors() {
     document.querySelectorAll('.field-error').forEach(function (el) {
       el.classList.remove('field-error');

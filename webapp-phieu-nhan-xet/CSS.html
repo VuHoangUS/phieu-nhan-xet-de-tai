@@ -326,6 +326,20 @@
   }
   .readonly-field .field-pill a { color: var(--blue); font-weight: 700; text-decoration: none; }
   .readonly-field .field-pill a:hover { text-decoration: underline; }
+
+  /* ---- Cặp file đề cương / file nghiệm thu, cạnh nhau trên cùng 1 hàng ---- */
+  .file-pair { display: flex; gap: 12px; flex-wrap: wrap; }
+  .file-pair-col { flex: 1 1 200px; }
+  .file-pair-label { font-size: 12.5px; font-weight: 600; color: var(--muted); margin-bottom: 4px; }
+  /* File nghiệm thu: cỡ chữ lớn hơn 2 mức (14px -> 18px) + highlight vàng, vì đây
+     là file người nhận xét dùng để chấm điểm. */
+  .field-pill-highlight {
+    background: #fff59d !important;
+    border-color: #f0d99a !important;
+    font-size: 18px; font-weight: 700;
+  }
+  .field-pill-highlight a { color: var(--blue-dark) !important; }
+
   .locked-badge {
     display: inline-flex; align-items: center; gap: 4px;
     font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
@@ -333,23 +347,45 @@
     border-radius: 20px; padding: 2px 10px; margin-left: 8px; vertical-align: middle;
   }
 
-  /* ---- Thang điểm 1-5 (biến thể của radio-pill, dạng ô vuông) ---- */
+  /* ---- Thang điểm 1-5: số ở trên + chấm tròn (bullet) bên dưới. Input radio nằm
+     LỒNG trong <label> nên bấm vào số, chấm tròn, hay bất kỳ đâu trong pill đều
+     chọn được — không phải chỉ bấm trúng chấm tròn mới ăn. ---- */
   .score-scale { display: flex; gap: 8px; flex-wrap: wrap; }
-  .score-pill {
+  /* Đặc tả ".score-scale .score-pill" (2 class) thay vì chỉ ".score-pill" (1 class)
+     để chắc chắn thắng ".field label { display: block; ... }" (1 class + 1 thẻ) —
+     nếu chỉ để 1 class, độ ưu tiên CSS thua rule đó và "display: flex" bị vô hiệu. */
+  .score-scale .score-pill {
     position: relative;
-    display: flex; align-items: center; justify-content: center;
-    width: 46px; height: 46px;
-    border: 1.5px solid var(--border); border-radius: 12px;
-    cursor: pointer; font-weight: 800; font-size: 16px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 7px;
+    width: 52px; height: 64px;
+    border: 1.5px solid var(--border); border-radius: 14px;
+    cursor: pointer;
     background: linear-gradient(#fff, #fafbfc);
     box-shadow: 0 4px 0 #d7dee4;
-    transition: transform .1s, box-shadow .1s, background .15s, border-color .15s, color .15s;
+    transition: transform .1s, box-shadow .1s, background .15s, border-color .15s;
   }
-  .score-pill:active { transform: translateY(2px); box-shadow: 0 2px 0 #d7dee4; }
-  .score-pill:has(input:checked) {
-    border-color: var(--blue); background: var(--blue); color: #fff;
-    box-shadow: 0 4px 0 var(--blue-dark); transform: translateY(-1px);
+  .score-scale .score-pill:active { transform: translateY(2px); box-shadow: 0 2px 0 #d7dee4; }
+  .score-scale .score-num {
+    font-weight: 800; font-size: 17px; color: var(--text);
+    transition: color .15s;
   }
-  .score-pill input { position: absolute; opacity: 0; width: 0; height: 0; }
-  .score-scale-caption { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--muted); margin-top: 6px; max-width: 300px; }
+  .score-scale .score-dot {
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    border: 2px solid var(--border);
+    background: #fff;
+    transition: background .15s, border-color .15s, box-shadow .15s;
+  }
+  .score-scale .score-pill:has(input:checked) {
+    border-color: var(--blue); background: var(--blue-light);
+    box-shadow: 0 4px 0 #9dc0dc; transform: translateY(-1px);
+  }
+  .score-scale .score-pill:has(input:checked) .score-num { color: var(--blue-dark); }
+  .score-scale .score-pill:has(input:checked) .score-dot {
+    background: var(--blue); border-color: var(--blue);
+    box-shadow: 0 0 0 3px rgba(26, 91, 150, .18);
+  }
+  .score-scale .score-pill input { position: absolute; opacity: 0; width: 0; height: 0; }
+  .score-scale-caption { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--muted); margin-top: 6px; max-width: 320px; }
 </style>

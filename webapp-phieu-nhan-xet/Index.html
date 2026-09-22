@@ -56,13 +56,22 @@
           <div class="field-pill" id="pf-tenDeTai"></div>
         </div>
         <div class="field">
-          <label>Chủ nhiệm đề tài</label>
-          <div class="field-pill" id="pf-chuNhiem"></div>
+          <label>Mã số đề tài</label>
+          <div class="field-pill" id="pf-maSoDeTai"></div>
         </div>
         <div class="field">
-          <label>File PDF của đề tài nghiên cứu trên</label>
-          <div class="field-pill" id="pf-pdfLink"></div>
-          <div class="hint">Bấm vào đường link ở trên để mở/tải file PDF của đề tài (mở ở tab mới).</div>
+          <label>File đề tài</label>
+          <div class="file-pair">
+            <div class="file-pair-col">
+              <div class="file-pair-label">File đề cương</div>
+              <div class="field-pill" id="pf-pdfDeCuong"></div>
+            </div>
+            <div class="file-pair-col">
+              <div class="file-pair-label">File nghiệm thu</div>
+              <div class="field-pill field-pill-highlight" id="pf-pdfNghiemThu"></div>
+            </div>
+          </div>
+          <div class="hint">Bấm vào đường link để mở file (mở ở tab mới). File nghiệm thu (tô vàng) là file dùng để chấm điểm.</div>
         </div>
       </section>
 
@@ -117,24 +126,24 @@
         <h2 class="card-title">B. Phần nhận xét bài báo</h2>
 
         <div class="field">
-          <label>Tính cấp thiết của chủ đề nghiên cứu? <span class="req">*</span></label>
-          <textarea id="nxTinhCapThiet" required></textarea>
+          <label>Tính cấp thiết của chủ đề nghiên cứu?</label>
+          <textarea id="nxTinhCapThiet"></textarea>
         </div>
         <div class="field">
-          <label>Sự phù hợp của thiết kế nghiên cứu và phương pháp nghiên cứu? <span class="req">*</span></label>
-          <textarea id="nxPhuHopThietKe" required></textarea>
+          <label>Sự phù hợp của thiết kế nghiên cứu và phương pháp nghiên cứu?</label>
+          <textarea id="nxPhuHopThietKe"></textarea>
         </div>
         <div class="field">
-          <label>Tính mới của những kết quả nghiên cứu? <span class="req">*</span></label>
-          <textarea id="nxTinhMoi" required></textarea>
+          <label>Tính mới của những kết quả nghiên cứu?</label>
+          <textarea id="nxTinhMoi"></textarea>
         </div>
         <div class="field">
-          <label>Ý nghĩa khoa học và ứng dụng thực tiễn? <span class="req">*</span></label>
-          <textarea id="nxYNghia" required></textarea>
+          <label>Ý nghĩa khoa học và ứng dụng thực tiễn?</label>
+          <textarea id="nxYNghia"></textarea>
         </div>
         <div class="field">
-          <label>Các điểm cần chỉnh sửa: <span class="req">*</span></label>
-          <textarea id="nxCanChinhSua" required></textarea>
+          <label>Các điểm cần chỉnh sửa:</label>
+          <textarea id="nxCanChinhSua"></textarea>
         </div>
       </section>
 

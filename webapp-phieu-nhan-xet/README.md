@@ -9,27 +9,33 @@ Thẩm định 2), mỗi người một link ngắn cố định riêng:
 ```
 
 Link không chứa dữ liệu — chỉ chứa mã. Toàn bộ dữ liệu điền sẵn (họ tên người
-nhận xét, email, tên đề tài, chủ nhiệm, link PDF) được **tra cứu trực tiếp từ
+nhận xét, email, tên đề tài, mã số đề tài, 2 file PDF) được **tra cứu trực tiếp từ
 Google Sheet mỗi lần link được mở**, nên khi bạn sửa dữ liệu trong sheet, form sẽ
 tự cập nhật theo — không cần tạo lại link.
 
-## Đúng theo bố cục sheet "DS_đề_tài_thẩm_định" thật của Viện
+## Cấu hình hiện tại (2026-09-22): sheet "Nghiệm thu 2026 - Q3"
+
+`LOOKUP_SPREADSHEET_ID`/`LOOKUP_SHEET_NAME` trong `Code.gs` đang trỏ vào sheet
+**"Nghiệm thu 2026 - Q3"** (file `19BLa5sH0xyLrvUa-F7cbuuiVRb7KPyuzaKoWMKeLQCE`),
+sheet này đã có sẵn đúng các cột cần thiết (được thêm tay từ trước):
 
 ```
-... | Bản PDF nghiệm thu đề tài | ... | Google form link | Shorten Link | NOTE |
-Thẩm định 1 | Email TĐ1 | Thẩm định 2 | Email TĐ2 | GG form link 2 | Shorten Link 2
+... | Mã số đề tài | Tải lên file PDF nghiệm thu đề tài | ... | File đề cương |
+Khoa/phòng TĐ1 | Thẩm định 1 | Khoa/phòng TĐ2 | Thẩm định 2 | Email TĐ1 | Email TĐ2 |
+Form 1 | Form 2 | Mã liên kết TĐ1 | Mã liên kết TĐ2
 ```
 
-- Script **ghi đè link cá nhân hoá mới thẳng vào cột "Shorten Link" (ứng với
-  Thẩm định 1) và "Shorten Link 2" (ứng với Thẩm định 2)** đã có sẵn — đúng như
-  quy ước cũ "Shorten Link là link của phiếu đánh giá", chỉ đổi nguồn sinh link.
-- Script tự tạo thêm 2 cột phụ **"Mã liên kết TĐ1"/"Mã liên kết TĐ2"** (lưu mã
-  thô dùng để tra cứu — khác với cột "Shorten Link" hiển thị link đầy đủ) và
-  **"Đã nhận xét lúc TĐ1"/"TĐ2"** (mốc thời gian sau khi người đó nộp bài) — 4
-  cột này KHÔNG cần tạo tay, script tự thêm vào cuối sheet khi chạy lần đầu.
-- Cột "Google form link" / "GG form link 2" (link Google Form dài kiểu cũ) và
-  sheet "Shortener" không còn được script này dùng tới — có thể giữ lại hoặc xoá
-  tuỳ bạn, không ảnh hưởng gì.
+- Script ghi đè link cá nhân hoá mới thẳng vào cột **"Form 1"** (Thẩm định 1) /
+  **"Form 2"** (Thẩm định 2) đã có sẵn — không tạo cột hiển thị link mới.
+- Cột **"Mã liên kết TĐ1"/"TĐ2"** (lưu mã thô dùng để tra cứu) cũng đã có sẵn
+  trong sheet này — script dùng luôn, không tạo trùng.
+- Script tự thêm 2 cột phụ **"Đã nhận xét lúc TĐ1"/"TĐ2"** (mốc thời gian sau khi
+  người đó nộp bài) vào cuối sheet khi chạy lần đầu — không cần tạo tay.
+- `LOOKUP_COLUMN_ALIASES`/`REVIEWER_SLOTS` trong `Code.gs` cũng liệt kê alias cho
+  bố cục cột của sheet "DS_đề_tài_thẩm_định" (đợt 2025) — muốn chuyển lại đợt cũ
+  chỉ cần đổi `LOOKUP_SPREADSHEET_ID`/`LOOKUP_SHEET_NAME`, không cần sửa gì khác.
+  Lưu ý: đợt cũ không có cột "File đề cương" riêng nên bắt buộc phải có cột đó
+  (hoặc thêm alias mới) nếu muốn dùng lại sheet cũ.
 
 ## Cấu trúc file
 
@@ -49,8 +55,8 @@ Thẩm định 1 | Email TĐ1 | Thẩm định 2 | Email TĐ2 | GG form link 2 |
    có thư mục con, tên file phải khớp y hệt, không có phần mở rộng `.gs`/`.html`
    khi đặt tên trong trình soạn thảo).
 2. Trong `Code.gs`, kiểm tra lại phần **CẤU HÌNH** ở đầu file:
-   - `LOOKUP_SPREADSHEET_ID` / `LOOKUP_SHEET_NAME`: trỏ tới sheet
-     "DS_đề_tài_thẩm_định" (file `1IuQdVd1944TKO8gMo98VuG-7-BPQ421q5tx1GDWOWRs`).
+   - `LOOKUP_SPREADSHEET_ID` / `LOOKUP_SHEET_NAME`: trỏ tới sheet "Nghiệm thu
+     2026 - Q3" (file `19BLa5sH0xyLrvUa-F7cbuuiVRb7KPyuzaKoWMKeLQCE`).
    - `RESPONSE_SPREADSHEET_ID` / `RESPONSE_SHEET_NAME`: trỏ tới sheet ghi kết quả
      (file `1H894S9x3JUWtZBCEdgsP5EiBbyBOjKkuGybgpSgXUK4`). Nếu tên sheet thực tế
      khác `RESPONSE_SHEET_NAME` ('Trang tính1'), sửa lại hằng số này cho khớp
@@ -64,12 +70,12 @@ Thẩm định 1 | Email TĐ1 | Thẩm định 2 | Email TĐ2 | GG form link 2 |
    nhận xét, ô B2 = MỞ/ĐÓNG) trong file kết quả.
 6. Chạy hàm `generateReviewLinks` — script sẽ:
    - Với mỗi dòng đề tài có "Thẩm định 1" và/hoặc "Thẩm định 2": sinh mã (nếu
-     dòng/slot đó **chưa có mã**) và ghi link đầy đủ vào đúng cột "Shorten Link" /
-     "Shorten Link 2" tương ứng.
+     dòng/slot đó **chưa có mã**) và ghi link đầy đủ vào đúng cột "Form 1" /
+     "Form 2" tương ứng.
    - An toàn khi chạy lại nhiều lần: slot đã có mã sẽ **giữ nguyên** mã cũ (chỉ
      link hiển thị được ghi làm mới, mã không đổi). Muốn cấp lại mã cho một người
-     cụ thể: xoá tay ô "Mã liên kết TĐ1"/"Mã liên kết TĐ2" (2 cột phụ script tự
-     tạo) của dòng đó rồi chạy lại hàm này.
+     cụ thể: xoá tay ô "Mã liên kết TĐ1"/"Mã liên kết TĐ2" của dòng đó rồi chạy
+     lại hàm này.
 7. Mỗi lần sửa code sau này: **Deploy → Manage deployments → Edit → New version**
    (sửa file không tự cập nhật link `/exec` đang chạy).
 
@@ -97,3 +103,15 @@ ai có đường liên kết)** → chọn quyền **Editor (Người chỉnh s�
 sửa được, hoặc **Viewer** nếu chỉ cần xem. Việc này không ảnh hưởng gì tới quyền
 chạy thật của webapp (webapp luôn chạy dưới quyền tài khoản bạn dùng để Deploy,
 không liên quan tới quyền chia sẻ cho Claude xem trong lúc trò chuyện).
+
+## Các thay đổi giao diện gần nhất (2026-09-22)
+
+- Thay trường "Chủ nhiệm đề tài" bằng **"Mã số đề tài"** ở khối thông tin điền sẵn.
+- Tách 1 trường PDF thành **2 ô cạnh nhau**: "File đề cương" (trái) và "File nghiệm
+  thu" (phải, chữ lớn hơn + nền vàng — đây là file dùng để chấm điểm). Cả 2 đều mở
+  ở tab mới khi bấm.
+- Thang điểm 1-5 đổi sang kiểu **bullet**: số ở trên, chấm tròn bên dưới, bấm vào
+  số hay chấm tròn đều chọn được (cả 2 đều nằm trong cùng 1 `<label>`).
+- **KẾT LUẬN = ĐẠT** thì không cho chọn Xếp loại = KHÔNG ĐẠT nữa (trước đây chỉ có
+  chiều ngược lại: KHÔNG ĐẠT ép Xếp loại = KHÔNG ĐẠT).
+- 5 câu hỏi ở "B. Phần nhận xét bài báo" không còn bắt buộc, có thể để trống.
