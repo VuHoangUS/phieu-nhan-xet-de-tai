@@ -8,8 +8,8 @@
  * hoa/thường — nếu thiếu email thì khớp theo tên), rồi ghi sang sheet
  * "Danh_sách_đề_tài_1" với 3 cột: Họ và tên | Email | Danh_sách_đề_tài.
  *
- * Mỗi đề tài trong ô "Danh_sách_đề_tài" được đánh số thứ tự, dòng "Tên đề tài:"
- * được in đậm (chỉ phần nhãn, không in đậm cả dòng), ví dụ:
+ * Mỗi đề tài trong ô "Danh_sách_đề_tài" được đánh số thứ tự, CẢ DÒNG "Tên đề tài:
+ * ..." (nhãn + tên đề tài) được in đậm, ví dụ:
  *
  *   1. Tên đề tài: Khảo sát ...
  *   Khoa/phòng: Khoa Cấp cứu
@@ -28,6 +28,9 @@ function generateReviewerWorklist() {
   var SPREADSHEET_ID = '19BLa5sH0xyLrvUa-F7cbuuiVRb7KPyuzaKoWMKeLQCE';
   var SOURCE_SHEET_NAME = 'Nghiệm thu 2026 - Q3';
   var DEST_SHEET_NAME = 'Danh_sách_đề_tài_1';
+  // Chỉ đọc tới hàng này của sheet nguồn (kể cả hàng tiêu đề) — đổi lại nếu phạm
+  // vi dữ liệu thay đổi. Hiện đang giới hạn ở hàng 96 theo yêu cầu.
+  var SOURCE_LAST_ROW = 96;
 
   var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
   var srcSheet = ss.getSheetByName(SOURCE_SHEET_NAME);
@@ -45,7 +48,7 @@ function generateReviewerWorklist() {
     emailTd2: rw_requireColumn_(headerMap, 'Email TĐ2', SOURCE_SHEET_NAME)
   };
 
-  var lastRow = srcSheet.getLastRow();
+  var lastRow = Math.min(srcSheet.getLastRow(), SOURCE_LAST_ROW);
   var lastCol = srcSheet.getLastColumn();
   var reviewers = {}; // key -> { name, email, topics: [{tenDeTai, khoaPhong, link}] }
   var order = []; // thứ tự xuất hiện lần đầu, để ghi ra sheet theo đúng thứ tự đó
@@ -110,7 +113,8 @@ function generateReviewerWorklist() {
     order.length, order.reduce(function (sum, k) { return sum + reviewers[k].topics.length; }, 0), DEST_SHEET_NAME);
 }
 
-/** Dựng nội dung 1 ô "Danh_sách_đề_tài": đánh số từng đề tài, in đậm nhãn "Tên đề tài:". */
+/** Dựng nội dung 1 ô "Danh_sách_đề_tài": đánh số từng đề tài, in đậm CẢ DÒNG
+ *  "Tên đề tài: ..." (nhãn + tên đề tài), các dòng khác giữ chữ thường. */
 function rw_buildTopicListRichText_(topics) {
   var text = '';
   var boldRanges = [];
@@ -118,11 +122,11 @@ function rw_buildTopicListRichText_(topics) {
   topics.forEach(function (t, i) {
     text += (i + 1) + '. ';
 
-    var labelStart = text.length;
-    text += 'Tên đề tài: ';
-    boldRanges.push([labelStart, text.length]);
+    var lineStart = text.length;
+    text += 'Tên đề tài: ' + (t.tenDeTai || '(không có tên)');
+    boldRanges.push([lineStart, text.length]);
+    text += '\n';
 
-    text += (t.tenDeTai || '(không có tên)') + '\n';
     text += 'Khoa/phòng: ' + (t.khoaPhong || '(không có dữ liệu)') + '\n';
     text += 'Link phiếu thẩm định: ' + (t.link || '(chưa có link)') + '\n';
 
