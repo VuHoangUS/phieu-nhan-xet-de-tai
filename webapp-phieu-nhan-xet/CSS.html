@@ -155,7 +155,12 @@
     background: #fff;
     transition: border-color .15s, box-shadow .15s;
   }
-  textarea { resize: vertical; min-height: 84px; }
+  /* Chiều cao do JS tự tính theo số dòng đã gõ (xem wireAutoGrowTextareas trong
+     JavaScript.html, tự set overflow-y: hidden ở đó) — bỏ kéo tay (resize: none)
+     để tránh người dùng tự kéo nhỏ lại rồi bị JS "bật" ngược lại ngay lần gõ tiếp
+     theo, gây cảm giác giật. Không set overflow-y: hidden ở CSS (chỉ ở JS) để nếu
+     JS lỡ không chạy được, ô vẫn còn thanh cuộn thay vì chữ bị cắt mất. */
+  textarea { resize: none; min-height: 84px; }
 
   input:focus, select:focus, textarea:focus {
     outline: none;

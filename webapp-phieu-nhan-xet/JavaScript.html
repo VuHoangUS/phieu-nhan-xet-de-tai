@@ -29,7 +29,23 @@
     renderPrefill();
     renderScoreScales();
     wireKetLuanToXepLoai();
+    wireAutoGrowTextareas();
   });
+
+  // ------------------------- Ô NHẬP TỰ GIÃN THEO SỐ DÒNG -------------------------
+
+  function autoGrowTextarea_(el) {
+    el.style.height = 'auto'; // thu lại trước, để scrollHeight tính đúng khi xoá bớt chữ
+    el.style.height = el.scrollHeight + 'px';
+  }
+
+  function wireAutoGrowTextareas() {
+    els.form.querySelectorAll('textarea').forEach(function (ta) {
+      ta.style.overflowY = 'hidden'; // ẩn thanh cuộn riêng của ô — để cả ô tự cao ra thay vì cuộn
+      autoGrowTextarea_(ta);
+      ta.addEventListener('input', function () { autoGrowTextarea_(ta); });
+    });
+  }
 
   // ------------------------- HIỂN THỊ DỮ LIỆU ĐIỀN SẴN -------------------------
 
