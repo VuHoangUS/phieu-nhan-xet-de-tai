@@ -31,6 +31,13 @@
  * trong các quyền hẹp hơn (gmail.send/gmail.compose/gmail.modify) vì hàm này cần
  * CẢ đọc danh sách thư nháp (getDrafts) LẪN gửi thư (sendEmail); dùng quyền đầy đủ
  * là cách chắc chắn nhất, phù hợp với một script quản trị nội bộ như thế này.)
+ *
+ * LỖI THỨ 2 ĐÃ SỬA: mail gửi ra bị MẤT ĐỊNH DẠNG (in đậm "Tên đề tài:", ...) dù ô
+ * "Danh_sách_đề_tài" trong Sheet vẫn có in đậm. Nguyên nhân: bản cũ đọc ô bằng
+ * sheet.getRange(i, 3).getValue() — getValue() CHỈ trả về chữ thuần, không mang
+ * theo định dạng rich text của ô. Bản dưới đổi sang getRichTextValue() rồi tự ghép
+ * thành HTML, đoạn nào đang in đậm trong Sheet thì bọc trong <b>...</b> khi chèn
+ * vào mail (xem rw_richTextToHtml_ bên dưới).
  */
 function sendInvitationsFromDraft() {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('test');
@@ -52,14 +59,16 @@ function sendInvitationsFromDraft() {
   for (var i = 2; i <= lastRow; i++) {
     var name = sheet.getRange(i, 1).getValue();
     var email = sheet.getRange(i, 2).getValue();
-    var topics = sheet.getRange(i, 3).getValue();
+    // getRichTextValue() (không phải getValue()) để giữ lại phần in đậm đã có
+    // trong ô (vd. "Tên đề tài: ...") khi chuyển sang HTML cho mail.
+    var topicsRichText = sheet.getRange(i, 3).getRichTextValue();
     var status = sheet.getRange(i, 4).getValue();
 
     if (!email || status === 'Đã gửi') continue;
 
     var personalizedBody = htmlTemplate
-      .replace(/\{\{Họ và tên\}\}/g, name)
-      .replace(/\{\{Danh_sách_đề_tài\}\}/g, String(topics).replace(/\n/g, '<br>'));
+      .replace(/\{\{Họ và tên\}\}/g, rw_escapeHtml_(name))
+      .replace(/\{\{Danh_sách_đề_tài\}\}/g, rw_richTextToHtml_(topicsRichText));
 
     Logger.log('📤 Đang gửi đến: ' + email);
 
@@ -71,4 +80,30 @@ function sendInvitationsFromDraft() {
 
   SpreadsheetApp.flush();
   Logger.log('🎉 Hoàn tất gửi tất cả thư mời.');
+}
+
+/**
+ * Chuyển một RichTextValue (giá trị + định dạng của 1 ô) sang chuỗi HTML, giữ lại
+ * in đậm (đoạn nào set bold trong Sheet thì bọc <b>...</b> trong HTML) và xuống
+ * dòng (\n -> <br>). Duyệt qua getRuns() — mỗi run là một đoạn liên tục có CÙNG
+ * định dạng (Apps Script tự gộp sẵn, không cần tự dò ranh giới bold).
+ */
+function rw_richTextToHtml_(richText) {
+  if (!richText) return '';
+  var runs = richText.getRuns();
+  var html = '';
+  runs.forEach(function (run) {
+    var text = rw_escapeHtml_(run.getText()).replace(/\n/g, '<br>');
+    var style = run.getTextStyle();
+    html += (style && style.isBold()) ? '<b>' + text + '</b>' : text;
+  });
+  return html;
+}
+
+/** Escape ký tự đặc biệt HTML (&, <, >) để không làm vỡ mail khi chèn dữ liệu thô. */
+function rw_escapeHtml_(value) {
+  return String(value == null ? '' : value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
