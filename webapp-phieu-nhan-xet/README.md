@@ -65,19 +65,36 @@ Form 1 | Form 2 | Mã liên kết TĐ1 | Mã liên kết TĐ2
 3. Chạy hàm `authorizeSheets` (chọn trong thanh Run ▶) **bằng đúng tài khoản sẽ
    Deploy**, bấm Allow khi được hỏi quyền. Chỉ cần làm 1 lần.
 4. Deploy → New deployment → Web app → Execute as: *Me (tài khoản vừa authorize)*
-   → Who has access: *Anyone*. Bấm Deploy, copy URL `/exec`.
-5. Chạy hàm `setupConfigSheet` một lần để tạo sheet "Cấu hình" (nút bật/tắt nhận
+   → Who has access: *Anyone*. Bấm Deploy, copy **"Web app URL"** (đuôi `/exec`).
+5. Dán URL vừa copy vào hằng số **`WEB_APP_URL`** ở đầu `Code.gs` (đoạn `'DÁN LINK
+   /exec Ở ĐÂY'`). **Bắt buộc** — xem phần "Lỗi hay gặp" bên dưới để biết vì sao.
+6. Chạy hàm `setupConfigSheet` một lần để tạo sheet "Cấu hình" (nút bật/tắt nhận
    nhận xét, ô B2 = MỞ/ĐÓNG) trong file kết quả.
-6. Chạy hàm `generateReviewLinks` — script sẽ:
+7. Chạy hàm `generateReviewLinks` — script sẽ:
    - Với mỗi dòng đề tài có "Thẩm định 1" và/hoặc "Thẩm định 2": sinh mã (nếu
-     dòng/slot đó **chưa có mã**) và ghi link đầy đủ vào đúng cột "Form 1" /
-     "Form 2" tương ứng.
+     dòng/slot đó **chưa có mã**) và ghi link đầy đủ (dựa trên `WEB_APP_URL`) vào
+     đúng cột "Form 1" / "Form 2" tương ứng.
    - An toàn khi chạy lại nhiều lần: slot đã có mã sẽ **giữ nguyên** mã cũ (chỉ
      link hiển thị được ghi làm mới, mã không đổi). Muốn cấp lại mã cho một người
      cụ thể: xoá tay ô "Mã liên kết TĐ1"/"Mã liên kết TĐ2" của dòng đó rồi chạy
      lại hàm này.
-7. Mỗi lần sửa code sau này: **Deploy → Manage deployments → Edit → New version**
-   (sửa file không tự cập nhật link `/exec` đang chạy).
+8. Mỗi lần sửa code sau này: **Deploy → Manage deployments → Edit → New version**
+   (sửa file không tự cập nhật link `/exec` đang chạy). Nếu thay vì "New version"
+   bạn tạo hẳn **deployment mới**, link `/exec` sẽ đổi — nhớ cập nhật lại
+   `WEB_APP_URL` rồi chạy lại `generateReviewLinks`.
+
+### Lỗi hay gặp: cột Form 1/Form 2 bị ghi link đuôi `/dev?id=...`
+
+Nếu mở link từ cột Form 1/Form 2 mà Google báo **"Bạn không có quyền truy cập
+vào tài liệu yêu cầu"**, kiểm tra xem link đó có đuôi `/dev?id=...` thay vì
+`/exec` không. Nguyên nhân: `generateReviewLinks()` được **chạy tay** từ trình
+soạn thảo (không phải từ một request thật tới webapp) — trong hoàn cảnh đó,
+`ScriptApp.getService().getUrl()` trả về link kiểm thử `/dev` (chỉ tài khoản có
+quyền Editor của chính script mới mở được), không phải link `/exec` thật. Vì
+vậy code hiện tại dùng hằng số `WEB_APP_URL` (dán tay, xem bước 5 ở trên) thay
+vì tự hỏi `getUrl()`. Nếu lỡ dính lỗi này: dán đúng `WEB_APP_URL` rồi chạy lại
+`generateReviewLinks` — hàm sẽ **ghi đè** lại đúng link `/exec` vào tất cả các
+ô Form 1/Form 2 đang sai (mã liên kết giữ nguyên, không đổi).
 
 ## Vì sao an toàn hơn cách cũ
 

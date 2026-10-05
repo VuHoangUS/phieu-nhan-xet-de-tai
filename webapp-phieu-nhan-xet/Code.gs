@@ -34,7 +34,7 @@
 
 // Đổi chuỗi này mỗi khi sửa code, rồi so với dòng "Server code version" hiện ở cuối
 // trang web đã deploy — nếu KHÔNG khớp nghĩa là bản deploy đang test vẫn là code CŨ.
-var CODE_VERSION = 'v3-2026-09-22-q3-masodetai-2files';
+var CODE_VERSION = 'v4-2026-10-05-fix-dev-url-in-links';
 
 // ============================= CẤU HÌNH =============================
 
@@ -69,6 +69,16 @@ var CLOSED_MESSAGE = 'Đã hết hạn nhận phiếu nhận xét đề tài. Vu
 // Bộ ký tự sinh Mã liên kết — cố tình bỏ các ký tự dễ nhầm (0/O, 1/I/L).
 var LINK_ID_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 var LINK_ID_LENGTH = 8;
+
+// URL webapp ĐÃ PUBLISH — dán tay vào đây, lấy từ Deploy > Manage deployments >
+// Web app URL (PHẢI có đuôi "/exec", KHÔNG phải "/dev?id=..."). Dùng biến này
+// thay vì ScriptApp.getService().getUrl() trong generateReviewLinks() vì hàm đó
+// được CHẠY TAY từ trình soạn thảo (không phải từ một request thật tới webapp) —
+// trong hoàn cảnh đó getUrl() trả về link kiểm thử "/dev" (chỉ người có quyền
+// Editor của script mới mở được) thay vì link "/exec" thật gửi được cho người
+// thẩm định. Mỗi khi deploy một DEPLOYMENT MỚI (không phải "New version" trên
+// deployment cũ) thì link /exec có thể đổi — nhớ cập nhật lại dòng dưới.
+var WEB_APP_URL = 'DÁN LINK /exec Ở ĐÂY';
 
 // ============================= WEB APP ENTRY =============================
 
@@ -338,9 +348,15 @@ function generateReviewLinks() {
     return findOrCreateColumn_(sheet, headerMap, cfg.personalLinkAliases, cfg.personalLinkAliases[0]);
   });
 
-  var scriptUrl = ScriptApp.getService().getUrl();
-  if (!scriptUrl) {
-    throw new Error('Chưa có URL web app đã deploy. Hãy Deploy > New deployment (Web app) ít nhất một lần rồi chạy lại hàm này.');
+  var scriptUrl = String(WEB_APP_URL || '').trim();
+  if (!scriptUrl || scriptUrl.indexOf('exec') === -1 || scriptUrl === 'DÁN LINK /exec Ở ĐÂY') {
+    throw new Error('WEB_APP_URL chưa được cấu hình đúng. Vào Deploy > Manage deployments, copy "Web app URL" ' +
+      '(đuôi "/exec"), dán vào biến WEB_APP_URL ở đầu Code.gs rồi chạy lại hàm này.');
+  }
+  if (scriptUrl.indexOf('/dev') !== -1) {
+    throw new Error('WEB_APP_URL đang là link TEST ("/dev?id=...") — link này CHỈ mở được với tài khoản ' +
+      'có quyền Editor của script, người thẩm định sẽ không mở được. Vào Deploy > Manage deployments, copy ' +
+      'đúng "Web app URL" (đuôi "/exec") rồi dán lại vào WEB_APP_URL.');
   }
 
   var lastRow = sheet.getLastRow();
